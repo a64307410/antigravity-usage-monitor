@@ -765,6 +765,11 @@ const BRIDGE_API_ROUTE_DEFS = Object.freeze([
   Object.freeze({ path: '/api/cloud-sync', method: 'POST', action: 'cloud_sync' }),
   Object.freeze({ path: '/api/plugin-update', method: 'POST', action: 'plugin_update' }),
   Object.freeze({ path: '/api/bridge/relaunch', method: 'POST', action: 'bridge_relaunch' }),
+  Object.freeze({ path: '/api/clipboard', method: 'POST', action: 'clipboard' }),
+  Object.freeze({ path: '/api/model-detector/status', method: 'GET', action: 'model_detector_status' }),
+  Object.freeze({ path: '/api/model-detector/detect', method: 'POST', action: 'model_detector_start' }),
+  Object.freeze({ path: '/api/model-detector/cancel', method: 'POST', action: 'model_detector_cancel' }),
+  Object.freeze({ path: '/api/model-detector/sync', method: 'POST', action: 'model_detector_sync' }),
 ]);
 
 const BRIDGE_API_PATHS = Object.freeze(BRIDGE_API_ROUTE_DEFS.map((r) => r.path));
@@ -867,6 +872,13 @@ const SVG_ICON_DEFS = Object.freeze({
   ],
   close: [
     { tag: 'path', attrs: { d: 'M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6' } },
+  ],
+  fingerprint: [
+    { tag: 'path', attrs: { d: 'M4.2 5.2a4.6 4.6 0 0 1 7.6 0' } },
+    { tag: 'path', attrs: { d: 'M3 8.2c0-2.8 2.2-5 5-5s5 2.2 5 5c0 1.7-.4 3.3-1.1 4.6' } },
+    { tag: 'path', attrs: { d: 'M5.5 8.3a2.5 2.5 0 0 1 5 0c0 1.8-.5 3.5-1.4 5' } },
+    { tag: 'path', attrs: { d: 'M8 8.2c0 1.9-.6 3.7-1.7 5.1' } },
+    { tag: 'path', attrs: { d: 'M3.6 10.8c-.3.8-.6 1.5-1 2.2' } },
   ],
   copy: [
     { tag: 'rect', attrs: { x: '5.2', y: '5.2', width: '8.3', height: '8.3', rx: '1.3' } },
@@ -1761,6 +1773,67 @@ const I18N_MESSAGES_ZH_CN = Object.freeze({
   'chart.trend.hmActivePeak': '活跃 {active}/{total} 天 · 峰值 {label} · {tokens}',
   'chart.trend.hmActiveZero': '活跃 0/{total} 天',
   'chart.trend.peakPill': '峰值 {label} · {tokens}',
+
+  // Inference Health Diagnostics & Model Detector
+  'health.badgeFallback': '异常预警',
+  'health.titleFallback': '推理异常预警',
+  'health.stateWarn': '预警',
+  'health.stateCritical': '失控',
+  'health.turnPill': '第 {turn} 轮 · {state}',
+  'health.dismissAria': '忽略本轮提示',
+  'health.dismissTitle': '忽略本轮异常提示',
+  'health.copiedToast': '已复制，可粘贴发送',
+  'health.jumpLabel': '定位 #{step}',
+  'steps.healthDiagLabel': '推理诊断',
+  'steps.healthTurnSub': '第 {turn} 轮 · {state}',
+  'settings.subTab.detector': '模型检测',
+  'settings.det.title': '模型真身检测',
+  'settings.det.modelLabel': '测试模型 (仅限反重力可用模型)',
+  'settings.det.curWinAuto': '当前窗口模型 (自动识别)',
+  'settings.det.curWinNamed': '当前窗口 · {label}',
+  'settings.det.defaultMeta': '默认',
+  'settings.det.quotaExhausted': '无额度',
+  'settings.det.remQuota': '余 {pct}%',
+  'settings.det.modeLabel': '采样通道',
+  'settings.det.modeAria': '探针采样通道选择',
+  'settings.det.modeFast': '极速同权',
+  'settings.det.modeExact': '原档直测',
+  'settings.det.agCellLabel': '反重力模型',
+  'settings.det.agCount': '{count} 个可选',
+  'settings.det.agLoading': '读取中…',
+  'settings.det.agSyncing': '同步反重力模型中…',
+  'settings.det.agRefMatch': '对标 {ref}',
+  'settings.det.agOpenSync': '开放识别 · 自动同步',
+  'settings.det.agAutoHost': '自动同步宿主模型',
+  'settings.det.bankCellLabel': '数字指纹库',
+  'settings.det.bankCount': '{count} 个参考',
+  'settings.det.bankNotReady': '未就绪',
+  'settings.det.bankError': '指纹库异常',
+  'settings.det.bankLoading': '正在加载指纹库…',
+  'settings.det.bankSrcRemote': '云端热更新',
+  'settings.det.bankSrcLocal': '内置最新包',
+  'settings.det.bankCheckedAt': '{src} · 核验 {time}',
+  'settings.det.syncBtn': '更新指纹库',
+  'settings.det.syncingBtn': '同步中…',
+  'settings.det.syncingMsg': '正在同步指纹库与宿主模型…',
+  'settings.det.syncOfflineMsg': '已同步 {count} 个模型 · 指纹库离线可用',
+  'settings.det.syncUpdatedMsg': '指纹库已更新 ({bankCount} 参考) · {count} 个宿主模型',
+  'settings.det.syncUpToDateMsg': '指纹库已是最新 · 已同步 {count} 个反重力模型',
+  'settings.det.syncFailedMsg': '同步失败，使用本地指纹库',
+  'settings.det.startBtn': '开始检测',
+  'settings.det.startingMsg': '正在启动探针…',
+  'settings.det.startFailedMsg': '启动检测失败',
+  'settings.det.cancelBtn': '取消检测',
+  'settings.det.canceledMsg': '已取消检测',
+  'settings.det.cancelFailedMsg': '取消失败',
+  'settings.det.runningDefault': '正在并发启动 3 路无语义整数探针…',
+  'settings.det.runningTarget': '正在检测 {target}…',
+  'settings.det.verdictTitle': '检测结论',
+  'settings.det.emptyNote': '默认检测当前窗口模型。通过 3 路多语种无语义整数分布数学比对模型底层权重，不污染当前对话上下文。',
+  'settings.det.doneBadge': '已完成',
+  'settings.det.curWinSuffix': ' · 当前窗口',
+  'settings.det.sampleMeta': '{used}/3 采样 · {nums} 整数',
+  'settings.det.historyTitle': '最近记录',
 });
 return { I18N_MESSAGES_ZH_CN };
 })();
@@ -2470,6 +2543,67 @@ const I18N_MESSAGES_EN_US = Object.freeze({
   'chart.trend.hmActivePeak': 'Active {active}/{total}d · Peak {label} · {tokens}',
   'chart.trend.hmActiveZero': 'Active 0/{total}d',
   'chart.trend.peakPill': 'Peak {label} · {tokens}',
+
+  // Inference Health Diagnostics & Model Detector
+  'health.badgeFallback': 'Health Alert',
+  'health.titleFallback': 'Inference Anomaly Alert',
+  'health.stateWarn': 'Warn',
+  'health.stateCritical': 'Critical',
+  'health.turnPill': 'Turn {turn} · {state}',
+  'health.dismissAria': 'Dismiss alert for this turn',
+  'health.dismissTitle': 'Dismiss alert for this turn',
+  'health.copiedToast': 'Copied — paste into chat',
+  'health.jumpLabel': 'Jump #{step}',
+  'steps.healthDiagLabel': 'Health Diag',
+  'steps.healthTurnSub': 'Turn {turn} · {state}',
+  'settings.subTab.detector': 'Detector',
+  'settings.det.title': 'Model Identity Detector',
+  'settings.det.modelLabel': 'Target Model (Host Available Models)',
+  'settings.det.curWinAuto': 'Current Window Model (Auto)',
+  'settings.det.curWinNamed': 'Current Window · {label}',
+  'settings.det.defaultMeta': 'Default',
+  'settings.det.quotaExhausted': 'Depleted',
+  'settings.det.remQuota': '{pct}% left',
+  'settings.det.modeLabel': 'Probe Mode',
+  'settings.det.modeAria': 'Probe sampling mode',
+  'settings.det.modeFast': 'Fast Same-Weights',
+  'settings.det.modeExact': 'Exact Tier',
+  'settings.det.agCellLabel': 'Host Models',
+  'settings.det.agCount': '{count} available',
+  'settings.det.agLoading': 'Loading…',
+  'settings.det.agSyncing': 'Syncing host models…',
+  'settings.det.agRefMatch': 'Ref {ref}',
+  'settings.det.agOpenSync': 'Open Match · Auto Sync',
+  'settings.det.agAutoHost': 'Auto-syncing host catalog',
+  'settings.det.bankCellLabel': 'Fingerprint Bank',
+  'settings.det.bankCount': '{count} refs',
+  'settings.det.bankNotReady': 'Not ready',
+  'settings.det.bankError': 'Bank error',
+  'settings.det.bankLoading': 'Loading bank…',
+  'settings.det.bankSrcRemote': 'Cloud synced',
+  'settings.det.bankSrcLocal': 'Bundled seed',
+  'settings.det.bankCheckedAt': '{src} · Checked {time}',
+  'settings.det.syncBtn': 'Sync Bank',
+  'settings.det.syncingBtn': 'Syncing…',
+  'settings.det.syncingMsg': 'Syncing fingerprint bank & host models…',
+  'settings.det.syncOfflineMsg': 'Synced {count} models · Offline bank active',
+  'settings.det.syncUpdatedMsg': 'Bank updated ({bankCount} refs) · {count} host models',
+  'settings.det.syncUpToDateMsg': 'Bank up to date · {count} host models synced',
+  'settings.det.syncFailedMsg': 'Sync failed — using local bank',
+  'settings.det.startBtn': 'Run Probe',
+  'settings.det.startingMsg': 'Launching probes…',
+  'settings.det.startFailedMsg': 'Failed to start probe',
+  'settings.det.cancelBtn': 'Cancel Probe',
+  'settings.det.canceledMsg': 'Probe canceled',
+  'settings.det.cancelFailedMsg': 'Failed to cancel',
+  'settings.det.runningDefault': 'Running 3 parallel non-semantic integer probes…',
+  'settings.det.runningTarget': 'Probing {target}…',
+  'settings.det.verdictTitle': 'Diagnosis Result',
+  'settings.det.emptyNote': 'Probes the current window model by default via 3 parallel non-semantic integer distributions without polluting your active conversation.',
+  'settings.det.doneBadge': 'Done',
+  'settings.det.curWinSuffix': ' · Window',
+  'settings.det.sampleMeta': '{used}/3 runs · {nums} ints',
+  'settings.det.historyTitle': 'Recent Runs',
 });
 return { I18N_MESSAGES_EN_US };
 })();
@@ -2493,8 +2627,17 @@ function normalizeI18nLanguage(raw) {
 
 function detectHostSystemLocale() {
   try {
-    if (typeof navigator !== 'undefined' && navigator.language) {
-      return String(navigator.language).toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US';
+    if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+      const langs =
+        Array.isArray(navigator.languages) && navigator.languages.length > 0
+          ? navigator.languages
+          : navigator.language
+            ? [navigator.language]
+            : [];
+      if (langs.some((l) => String(l).toLowerCase().startsWith('zh'))) {
+        return 'zh-CN';
+      }
+      if (langs.length > 0) return 'en-US';
     }
   } catch {
     // Ignore environment navigator read errors
@@ -3479,7 +3622,7 @@ return { defineComponent };
 })();
 
 // --- src/core/formatters.js ---
-const { formatMetric, formatSpeedMetric, formatCachePct, getSpeedToneClass, getCacheToneClass, getStepCostToneClass, getTtftToneClass, formatTokens, formatTokensPrecise, formatCnyApprox, formatDateSpanBadge, formatUsd, speedReasonText, formatAnomalyKindLabel, formatAnomalyTagText, resolveModelAnomalySummary, formatStepAnomalyInlineSummary, buildStepAnomalyDiagnostic, buildStepCompactionDiagnostic, buildModelAnomalyDiagnostic, sampleSummary, formatCountdown, formatCompactDateTime, formatElapsedSec, stripVendorModelPrefix, normalizeOrchestratorIdDisplayMode, resolveModelDisplayInfo, mergeModelsByDisplayName, getAgentBadgeClass, formatAgentBadgeText, formatAgentLabel, formatConversationMeta, formatLiveActivityLabel, formatLiveActivityDetail, getCanonicalModelColorSeed, resolveDeterministicModelColor, buildDeterministicModelColorMap } = (() => {
+const { formatMetric, formatSpeedMetric, formatCachePct, getSpeedToneClass, getCacheToneClass, getStepCostToneClass, getTtftToneClass, formatTokens, formatTokensPrecise, formatCnyApprox, formatDateSpanBadge, formatUsd, speedReasonText, formatAnomalyKindLabel, formatAnomalyTagText, resolveModelAnomalySummary, formatStepAnomalyInlineSummary, buildStepAnomalyDiagnostic, buildStepHealthDiagnostic, buildStepCompactionDiagnostic, buildModelAnomalyDiagnostic, sampleSummary, formatCountdown, formatCompactDateTime, formatElapsedSec, stripVendorModelPrefix, normalizeOrchestratorIdDisplayMode, resolveModelDisplayInfo, mergeModelsByDisplayName, getAgentBadgeClass, formatAgentBadgeText, formatAgentLabel, formatConversationMeta, formatLiveActivityLabel, formatLiveActivityDetail, getCanonicalModelColorSeed, resolveDeterministicModelColor, buildDeterministicModelColorMap, splitModelHeadTail } = (() => {
 /**
  * @fileoverview Pure formatting utilities for speed metrics, token counts,
  * USD estimates, countdown timers, and custom datetime displays.
@@ -3683,12 +3826,46 @@ function buildStepAnomalyDiagnostic(st) {
       danger: Boolean(ev.terminal || ev.kind === 'rate_limit' || ev.kind === 'auth_or_model'),
     };
   });
+  if (st?.stepHealthDetail) {
+    rows.push({
+      text: st.stepHealthBadge ? `[${st.stepHealthBadge}]` : t('steps.healthDiagLabel'),
+      detail: st.stepHealthDetail,
+      mono: false,
+      danger: st.stepHealthLevel === 'critical',
+    });
+  }
   return {
     title,
     sub,
     rows,
     hint: '',
-    severity: a.severity === 'danger' ? 'danger' : 'warn',
+    severity:
+      a.severity === 'danger' || st?.stepHealthLevel === 'critical' ? 'danger' : 'warn',
+  };
+}
+
+function buildStepHealthDiagnostic(st) {
+  if (!st || typeof st !== 'object') return null;
+  const lvl = st.stepHealthLevel;
+  if (!lvl || lvl === 'healthy' || !st.stepHealthDetail) return null;
+  const badge = st.stepHealthBadge || t('steps.healthDiagLabel');
+  const title = `#${Number(st.stepIndex ?? 0)} · ${badge}`;
+  const details = String(st.stepHealthDetail)
+    .split(' · ')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const rows = details.map((d) => ({
+    text: d,
+    detail: '',
+    mono: false,
+    danger: lvl === 'critical',
+  }));
+  return {
+    title,
+    sub: st.turnIndex ? t('steps.healthTurnSub', { turn: st.turnIndex, state: st.turnHealthStateLabel || '' }) : '',
+    rows,
+    hint: st.cacheNote || st.infraNote || '',
+    severity: lvl === 'critical' ? 'danger' : lvl === 'notice' ? 'notice' : 'warn',
   };
 }
 
@@ -4537,11 +4714,45 @@ function buildDeterministicModelColorMap(models = []) {
 
   return colorMap;
 }
-return { formatMetric, formatSpeedMetric, formatCachePct, getSpeedToneClass, getCacheToneClass, getStepCostToneClass, getTtftToneClass, formatTokens, formatTokensPrecise, formatCnyApprox, formatDateSpanBadge, formatUsd, speedReasonText, formatAnomalyKindLabel, formatAnomalyTagText, resolveModelAnomalySummary, formatStepAnomalyInlineSummary, buildStepAnomalyDiagnostic, buildStepCompactionDiagnostic, buildModelAnomalyDiagnostic, sampleSummary, formatCountdown, formatCompactDateTime, formatElapsedSec, stripVendorModelPrefix, normalizeOrchestratorIdDisplayMode, resolveModelDisplayInfo, mergeModelsByDisplayName, getAgentBadgeClass, formatAgentBadgeText, formatAgentLabel, formatConversationMeta, formatLiveActivityLabel, formatLiveActivityDetail, getCanonicalModelColorSeed, resolveDeterministicModelColor, buildDeterministicModelColorMap };
+
+/**
+ * Splits a model identifier into a shrinkable prefix (`head`) and a preserved distinguishing
+ * suffix (`tail`) so narrow step tables keep critical endings (`-carbon`, `-high`, `·压缩`) visible
+ * while guaranteeing `head + tail === normalizedStr`.
+ *
+ * @param {unknown} rawText
+ * @returns {{ head: string, tail: string }}
+ */
+function splitModelHeadTail(rawText) {
+  const str = String(rawText ?? '').replace(/[\r\n]+/g, ' ');
+  if (str.length <= 10) {
+    return { head: '', tail: str };
+  }
+  const parenMatch = str.match(/^(.+?\s+)(\([^()]+\)(?:·(?:压缩|compact))?)$/i);
+  if (parenMatch && parenMatch[2].length <= 18) {
+    return { head: parenMatch[1], tail: parenMatch[2] };
+  }
+  const parts = str.match(/[^-_/\s]+[-_/\s]*/g);
+  if (!parts || parts.length <= 1) {
+    return { head: str.slice(0, -9), tail: str.slice(-9) };
+  }
+  let tail = parts[parts.length - 1];
+  let idx = parts.length - 2;
+  while (idx >= 1 && tail.length + parts[idx].length <= 10) {
+    tail = parts[idx] + tail;
+    idx -= 1;
+  }
+  const head = parts.slice(0, idx + 1).join('');
+  if (!head) {
+    return { head: str.slice(0, -9), tail: str.slice(-9) };
+  }
+  return { head, tail };
+}
+return { formatMetric, formatSpeedMetric, formatCachePct, getSpeedToneClass, getCacheToneClass, getStepCostToneClass, getTtftToneClass, formatTokens, formatTokensPrecise, formatCnyApprox, formatDateSpanBadge, formatUsd, speedReasonText, formatAnomalyKindLabel, formatAnomalyTagText, resolveModelAnomalySummary, formatStepAnomalyInlineSummary, buildStepAnomalyDiagnostic, buildStepHealthDiagnostic, buildStepCompactionDiagnostic, buildModelAnomalyDiagnostic, sampleSummary, formatCountdown, formatCompactDateTime, formatElapsedSec, stripVendorModelPrefix, normalizeOrchestratorIdDisplayMode, resolveModelDisplayInfo, mergeModelsByDisplayName, getAgentBadgeClass, formatAgentBadgeText, formatAgentLabel, formatConversationMeta, formatLiveActivityLabel, formatLiveActivityDetail, getCanonicalModelColorSeed, resolveDeterministicModelColor, buildDeterministicModelColorMap, splitModelHeadTail };
 })();
 
 // --- src/core/httpClient.js ---
-const { abortSidecarApiKey, getWindowBridgeConfig, isWindowOverlayMode, deliverCdpBridgeResponses, callSidecarApi } = (() => {
+const { abortSidecarApiKey, getWindowBridgeConfig, isWindowOverlayMode, deliverCdpBridgeResponses, callSidecarApi, copyTextToClipboard, copyWithTimedFeedback } = (() => {
 /**
  * @fileoverview Async HTTP client with AbortController cancellation for stale
  * polling requests, concurrent GET deduplication, and dual-mode transport
@@ -4823,7 +5034,100 @@ async function callSidecarApi(path, { method = 'GET', body, abortKey = '', cdpTi
   }
   return promise;
 }
-return { abortSidecarApiKey, getWindowBridgeConfig, isWindowOverlayMode, deliverCdpBridgeResponses, callSidecarApi };
+
+/**
+ * Copy text to system clipboard across Webview / Shadow DOM / Sidecar sandbox:
+ * 1. Synchronous hidden `<textarea>` + `execCommand('copy')` while user activation is active;
+ * 2. Async `navigator.clipboard.writeText`;
+ * 3. Sidecar `/api/clipboard` fallback.
+ */
+async function copyTextToClipboard(text) {
+  const str = String(text ?? '');
+  if (!str) return false;
+  if (typeof window !== 'undefined') {
+    window.__AGLastCopiedText = str;
+  }
+
+  let syncCopied = false;
+  if (
+    typeof document !== 'undefined' &&
+    typeof document.createElement === 'function' &&
+    typeof document.execCommand === 'function' &&
+    document.body?.appendChild
+  ) {
+    let ta = null;
+    const prevActive = document.activeElement;
+    try {
+      ta = document.createElement('textarea');
+      ta.value = str;
+      ta.setAttribute?.('readonly', '');
+      if (ta.style) {
+        ta.style.position = 'fixed';
+        ta.style.top = '0';
+        ta.style.left = '-9999px';
+        ta.style.opacity = '0';
+        ta.style.pointerEvents = 'none';
+      }
+      document.body.appendChild(ta);
+      ta.focus?.({ preventScroll: true });
+      ta.select?.();
+      ta.setSelectionRange?.(0, str.length);
+      syncCopied = Boolean(document.execCommand('copy'));
+    } catch {
+      syncCopied = false;
+    } finally {
+      ta?.remove?.();
+      try {
+        prevActive?.focus?.({ preventScroll: true });
+      } catch {
+        // ignore focus restore failure
+      }
+    }
+  }
+
+  let asyncCopied = false;
+  if (typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(str);
+      asyncCopied = true;
+    } catch {
+      asyncCopied = false;
+    }
+  }
+
+  if (syncCopied || asyncCopied) {
+    return true;
+  }
+
+  try {
+    const res = await callSidecarApi('/api/clipboard', {
+      method: 'POST',
+      body: { text: str },
+    });
+    if (res?.ok) return true;
+  } catch {
+    // ignore fallback failure
+  }
+  return false;
+}
+
+async function copyWithTimedFeedback(text, timerHolder, onToggle, durationMs = 1500) {
+  const ok = await copyTextToClipboard(text);
+  if (!ok || typeof onToggle !== 'function') return ok;
+  if (timerHolder?.id) {
+    clearTimeout(timerHolder.id);
+    timerHolder.id = null;
+  }
+  onToggle(true);
+  if (timerHolder) {
+    timerHolder.id = setTimeout(() => {
+      timerHolder.id = null;
+      onToggle(false);
+    }, durationMs);
+  }
+  return true;
+}
+return { abortSidecarApiKey, getWindowBridgeConfig, isWindowOverlayMode, deliverCdpBridgeResponses, callSidecarApi, copyTextToClipboard, copyWithTimedFeedback };
 })();
 
 // --- src/store/uiStore.js ---
@@ -4846,10 +5150,13 @@ const uiStore = createReactiveStore({
   activeView: 'overview',
   monitorVisible: true,
   stepsSubTab: 'steps', // 'steps' | 'models'
-  settingsSubTab: 'general', // 'general' | 'structure' | 'account' | 'other'
+  settingsSubTab: 'general', // 'general' | 'structure' | 'account' | 'other' | 'detector'
   settingsStructureTab: 'mount', // 'mount' | 'hover' | 'overview' | 'steps'
   selectedAgentScope: 'all', // 'all' | 'main' | <subagent cascadeId>
   ctxInspectorAgentId: 'auto', // 'auto' | 'main' | <subagent cascadeId>
+  detectorProbeMode: 'fast', // 'fast' | 'exact'
+  dismissedHealthAlertKey: '',
+  highlightedStepTarget: null,
 });
 
 function getVisibleMonitorView(state = uiStore.getState()) {
@@ -4859,7 +5166,7 @@ return { getViewTabs, uiStore, getVisibleMonitorView };
 })();
 
 // --- src/store/telemetryStore.js ---
-const { extractHostRouteCascadeId, telemetryStore, clearConsumptionRangeCache, clearConversationViewCache, CLIENT_TOPBAR_SLOT_KEYS, DEFAULT_CLIENT_TOPBAR_SLOTS, CLIENT_OVERVIEW_MODULE_KEYS, DEFAULT_CLIENT_OVERVIEW_MODULES, DEFAULT_CLIENT_HOVER_MODULES, CLIENT_OVERVIEW_METRIC_KEYS, DEFAULT_CLIENT_OVERVIEW_METRICS, CLIENT_STEP_COLUMN_KEYS, DEFAULT_CLIENT_STEP_COLUMNS, DEFAULT_CLIENT_STEP_TOKEN_COMBO_FORMAT, MIN_CLIENT_POPOVER_WIDTH, MAX_CLIENT_POPOVER_WIDTH, DEFAULT_CLIENT_POPOVER_WIDTH, parseClientStepTokenComboSegments, normalizeClientStepTokenComboFormat, normalizeClientPopoverWidthMode, normalizeClientPopoverWidth, normalizeClientModelDisplayMode, normalizeClientTopbarSlots, normalizeClientHoverModules, normalizeClientOverviewModules, normalizeClientOverviewMetrics, normalizeClientStepColumns, normalizeClientUpdateMode, normalizeClientOrchestratorIdMode, normalizeClientWindowMountMode, isEquivalentTelemetry, resetTelemetryForEndpointSwitch, fetchTelemetry, selectConversation, selectConsumptionTimeRange, prefetchConsumptionPresets, saveSettingsPatch, saveModelContextWindow, resetAllSettings, rebuildTrajectoryCache, triggerCloudSync, triggerBridgeHostRelaunch, triggerPluginUpdate, startAsyncTelemetryLoop, stopAsyncTelemetryLoop, resolveHostRouteMatch, resolveScopedConversation, isMacHostPlatform } = (() => {
+const { extractHostRouteCascadeId, telemetryStore, clearConsumptionRangeCache, clearConversationViewCache, CLIENT_TOPBAR_SLOT_KEYS, DEFAULT_CLIENT_TOPBAR_SLOTS, CLIENT_OVERVIEW_MODULE_KEYS, DEFAULT_CLIENT_OVERVIEW_MODULES, DEFAULT_CLIENT_HOVER_MODULES, CLIENT_OVERVIEW_METRIC_KEYS, DEFAULT_CLIENT_OVERVIEW_METRICS, CLIENT_STEP_COLUMN_KEYS, DEFAULT_CLIENT_STEP_COLUMNS, DEFAULT_CLIENT_STEP_TOKEN_COMBO_FORMAT, MIN_CLIENT_POPOVER_WIDTH, MAX_CLIENT_POPOVER_WIDTH, DEFAULT_CLIENT_POPOVER_WIDTH, parseClientStepTokenComboSegments, normalizeClientStepTokenComboFormat, normalizeClientPopoverWidthMode, normalizeClientPopoverWidth, normalizeClientModelDisplayMode, normalizeClientTopbarSlots, normalizeClientHoverModules, normalizeClientOverviewModules, normalizeClientOverviewMetrics, normalizeClientStepColumns, normalizeClientUpdateMode, normalizeClientOrchestratorIdMode, normalizeClientWindowMountMode, isEquivalentTelemetry, resetTelemetryForEndpointSwitch, fetchTelemetry, selectConversation, selectConsumptionTimeRange, prefetchConsumptionPresets, saveSettingsPatch, saveModelContextWindow, resetAllSettings, rebuildTrajectoryCache, triggerCloudSync, triggerBridgeHostRelaunch, triggerPluginUpdate, startAsyncTelemetryLoop, stopAsyncTelemetryLoop, CURRENT_WINDOW_MODEL_VALUE, extractHostComposerModelHint, fetchModelDetectorStatus, triggerModelDetection, cancelModelDetection, syncModelDetector, resolveHostRouteMatch, resolveScopedConversation, isMacHostPlatform } = (() => {
 /**
  * @fileoverview Reactive telemetry store with async non-overlapping poll scheduler
  * and granular slice updates.
@@ -5466,6 +5773,16 @@ function isEquivalentTelemetry(prev, next) {
     pAct?.latestStepCostUsd !== nAct?.latestStepCostUsd ||
     pAct?.sessionCostUsd !== nAct?.sessionCostUsd ||
     pAct?.sessionUnpricedCalls !== nAct?.sessionUnpricedCalls
+  ) {
+    return false;
+  }
+  if (
+    pAct?.inferenceHealth?.sessionLevel !== nAct?.inferenceHealth?.sessionLevel ||
+    pAct?.inferenceHealth?.activeAlert?.alertKey !== nAct?.inferenceHealth?.activeAlert?.alertKey ||
+    pAct?.aggregated?.inferenceHealth?.sessionLevel !==
+      nAct?.aggregated?.inferenceHealth?.sessionLevel ||
+    pAct?.aggregated?.inferenceHealth?.activeAlert?.alertKey !==
+      nAct?.aggregated?.inferenceHealth?.activeAlert?.alertKey
   ) {
     return false;
   }
@@ -6788,6 +7105,144 @@ function stopAsyncTelemetryLoop() {
 }
 
 
+const CURRENT_WINDOW_MODEL_VALUE = '__current__';
+
+function normalizeHostButtonModelText(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/[⌃⌄▾▴∨∧^<>›‹+\s]+/g, ' ')
+    .trim();
+}
+
+function resolveActiveDetectorConversationId() {
+  const st = telemetryStore.getState();
+  return (
+    extractHostRouteCascadeId() ||
+    st.selectedConversationId ||
+    st.telemetry?.activeConversation?.cascadeId ||
+    ''
+  );
+}
+
+function extractHostComposerModelHint(knownModels = []) {
+  if (typeof document === 'undefined' || !isWindowOverlayMode()) return '';
+  if (typeof document.querySelectorAll !== 'function') return '';
+  const knownNormSet = new Set(
+    (Array.isArray(knownModels) ? knownModels : [])
+      .map((m) => normalizeHostButtonModelText(m?.label || m?.modelId || ''))
+      .filter(Boolean)
+  );
+
+  let buttons;
+  try {
+    buttons = document.querySelectorAll('button, [role="button"]');
+  } catch {
+    return '';
+  }
+
+  const candidates = [];
+  for (const btn of buttons) {
+    if (!btn || typeof btn.closest !== 'function') continue;
+    if (
+      btn.closest('#ag-usage-monitor-capsule') ||
+      btn.closest('#ag-usage-monitor-portal') ||
+      btn.closest('[role="menu"]') ||
+      btn.closest('[role="listbox"]')
+    ) {
+      continue;
+    }
+    const role = String(btn.getAttribute?.('role') || '');
+    if (role === 'menuitem' || role === 'menuitemradio' || role === 'option') continue;
+
+    const rawText = String(btn.textContent || '').replace(/\s+/g, ' ').trim();
+    if (rawText.length < 4 || rawText.length > 60) continue;
+
+    const norm = normalizeHostButtonModelText(rawText);
+    if (!norm) continue;
+    const isKnown = knownNormSet.size > 0 && knownNormSet.has(norm);
+    const looksLikeAgModel =
+      /^(?:gemini\s+\d|claude\s+(?:opus|sonnet|haiku)|orchestrator\b|gpt[- ]oss\b|neon\b|argon\b|carbon\b)/i.test(
+        norm
+      );
+    if (!isKnown && !looksLikeAgModel) continue;
+
+    let topY = 0;
+    if (typeof btn.getBoundingClientRect === 'function') {
+      const rect = btn.getBoundingClientRect();
+      if (rect.width <= 0 && rect.height <= 0) continue;
+      topY = rect.top;
+    }
+    const hasPopup = Boolean(btn.getAttribute?.('aria-haspopup'));
+    candidates.push({ rawText, isKnown, hasPopup, topY });
+  }
+
+  if (!candidates.length) return '';
+  candidates.sort((a, b) => {
+    if (a.isKnown !== b.isKnown) return a.isKnown ? -1 : 1;
+    if (a.hasPopup !== b.hasPopup) return a.hasPopup ? -1 : 1;
+    return b.topY - a.topY;
+  });
+  return candidates[0].rawText;
+}
+
+async function fetchModelDetectorStatus({ force = false, knownModels = [] } = {}) {
+  const params = new URLSearchParams();
+  const convId = resolveActiveDetectorConversationId();
+  const hint = extractHostComposerModelHint(knownModels);
+  if (convId) params.set('conversationId', convId);
+  if (hint) params.set('composerModelHint', hint);
+  if (force) params.set('force', '1');
+  const qs = params.toString();
+  return callSidecarApi(`/api/model-detector/status${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    abortKey: force ? 'model-detector-force' : 'model-detector-poll',
+  });
+}
+
+async function triggerModelDetection({
+  modelId = CURRENT_WINDOW_MODEL_VALUE,
+  probeMode = 'fast',
+  knownModels = [],
+} = {}) {
+  const convId = resolveActiveDetectorConversationId();
+  const hint = extractHostComposerModelHint(knownModels);
+  return callSidecarApi('/api/model-detector/detect', {
+    method: 'POST',
+    body: {
+      modelId: modelId || CURRENT_WINDOW_MODEL_VALUE,
+      probeMode: probeMode === 'exact' ? 'exact' : 'fast',
+      conversationId: convId,
+      composerModelHint: hint,
+    },
+  });
+}
+
+async function cancelModelDetection({ knownModels = [] } = {}) {
+  const convId = resolveActiveDetectorConversationId();
+  const hint = extractHostComposerModelHint(knownModels);
+  return callSidecarApi('/api/model-detector/cancel', {
+    method: 'POST',
+    body: {
+      conversationId: convId,
+      composerModelHint: hint,
+    },
+  });
+}
+
+async function syncModelDetector({ knownModels = [] } = {}) {
+  const convId = resolveActiveDetectorConversationId();
+  const hint = extractHostComposerModelHint(knownModels);
+  const res = await callSidecarApi('/api/model-detector/sync', {
+    method: 'POST',
+    body: {
+      conversationId: convId,
+      composerModelHint: hint,
+    },
+  });
+  void fetchTelemetry({ force: true });
+  return res;
+}
+
 /**
  * 在遥测快照中解析宿主当前路由会话 ID（兼容顶层主会话 ID 与子代理/蜂群工蜂 ID）。
  *
@@ -6981,7 +7436,7 @@ function isMacHostPlatform(telemetry) {
   }
   return false;
 }
-return { extractHostRouteCascadeId, telemetryStore, clearConsumptionRangeCache, clearConversationViewCache, CLIENT_TOPBAR_SLOT_KEYS, DEFAULT_CLIENT_TOPBAR_SLOTS, CLIENT_OVERVIEW_MODULE_KEYS, DEFAULT_CLIENT_OVERVIEW_MODULES, DEFAULT_CLIENT_HOVER_MODULES, CLIENT_OVERVIEW_METRIC_KEYS, DEFAULT_CLIENT_OVERVIEW_METRICS, CLIENT_STEP_COLUMN_KEYS, DEFAULT_CLIENT_STEP_COLUMNS, DEFAULT_CLIENT_STEP_TOKEN_COMBO_FORMAT, MIN_CLIENT_POPOVER_WIDTH, MAX_CLIENT_POPOVER_WIDTH, DEFAULT_CLIENT_POPOVER_WIDTH, parseClientStepTokenComboSegments, normalizeClientStepTokenComboFormat, normalizeClientPopoverWidthMode, normalizeClientPopoverWidth, normalizeClientModelDisplayMode, normalizeClientTopbarSlots, normalizeClientHoverModules, normalizeClientOverviewModules, normalizeClientOverviewMetrics, normalizeClientStepColumns, normalizeClientUpdateMode, normalizeClientOrchestratorIdMode, normalizeClientWindowMountMode, isEquivalentTelemetry, resetTelemetryForEndpointSwitch, fetchTelemetry, selectConversation, selectConsumptionTimeRange, prefetchConsumptionPresets, saveSettingsPatch, saveModelContextWindow, resetAllSettings, rebuildTrajectoryCache, triggerCloudSync, triggerBridgeHostRelaunch, triggerPluginUpdate, startAsyncTelemetryLoop, stopAsyncTelemetryLoop, resolveHostRouteMatch, resolveScopedConversation, isMacHostPlatform };
+return { extractHostRouteCascadeId, telemetryStore, clearConsumptionRangeCache, clearConversationViewCache, CLIENT_TOPBAR_SLOT_KEYS, DEFAULT_CLIENT_TOPBAR_SLOTS, CLIENT_OVERVIEW_MODULE_KEYS, DEFAULT_CLIENT_OVERVIEW_MODULES, DEFAULT_CLIENT_HOVER_MODULES, CLIENT_OVERVIEW_METRIC_KEYS, DEFAULT_CLIENT_OVERVIEW_METRICS, CLIENT_STEP_COLUMN_KEYS, DEFAULT_CLIENT_STEP_COLUMNS, DEFAULT_CLIENT_STEP_TOKEN_COMBO_FORMAT, MIN_CLIENT_POPOVER_WIDTH, MAX_CLIENT_POPOVER_WIDTH, DEFAULT_CLIENT_POPOVER_WIDTH, parseClientStepTokenComboSegments, normalizeClientStepTokenComboFormat, normalizeClientPopoverWidthMode, normalizeClientPopoverWidth, normalizeClientModelDisplayMode, normalizeClientTopbarSlots, normalizeClientHoverModules, normalizeClientOverviewModules, normalizeClientOverviewMetrics, normalizeClientStepColumns, normalizeClientUpdateMode, normalizeClientOrchestratorIdMode, normalizeClientWindowMountMode, isEquivalentTelemetry, resetTelemetryForEndpointSwitch, fetchTelemetry, selectConversation, selectConsumptionTimeRange, prefetchConsumptionPresets, saveSettingsPatch, saveModelContextWindow, resetAllSettings, rebuildTrajectoryCache, triggerCloudSync, triggerBridgeHostRelaunch, triggerPluginUpdate, startAsyncTelemetryLoop, stopAsyncTelemetryLoop, CURRENT_WINDOW_MODEL_VALUE, extractHostComposerModelHint, fetchModelDetectorStatus, triggerModelDetection, cancelModelDetection, syncModelDetector, resolveHostRouteMatch, resolveScopedConversation, isMacHostPlatform };
 })();
 
 // --- src/components/ui/TopLongPillNav.js ---
@@ -14954,18 +15409,37 @@ const STEP_COLUMN_REGISTRY = Object.freeze({
     optLabel: () => t('stepCol.model.opt'),
     sigPart: (st, ctx) => {
       const disp = resolveModelDisplayInfo(st, ctx.displaySettings, { fallback: '—' });
-      return `${disp.baseText}:${disp.title}`;
+      return `${disp.baseText}:${disp.title}:${st.stepHealthLevel || ''}:${st.stepHealthBadge || ''}`;
     },
     createCell: () => {
-      const nameEl = h('span', { className: 'step-model-name' });
-      const wrapEl = h('span', { className: 'step-model-cell' }, [nameEl]);
+      const headEl = h('span', { className: 'model-name-head' });
+      const tailEl = h('span', { className: 'model-name-tail' });
+      const nameEl = h('span', { className: 'step-model-name' }, [headEl, tailEl]);
+      const healthTagEl = h('span', { className: 'step-health-tag', hidden: true });
+      const wrapEl = h('span', { className: 'step-model-cell' }, [nameEl, healthTagEl]);
       const td = h('td', {}, [wrapEl]);
-      return { td, refs: { td, wrapEl, nameEl } };
+      return { td, refs: { td, wrapEl, nameEl, headEl, tailEl, healthTagEl } };
     },
     updateCell: (refs, st, ctx) => {
       const modelDisplay = resolveModelDisplayInfo(st, ctx.displaySettings, { fallback: '—' });
-      patchText(refs.nameEl, modelDisplay.baseText);
-      patchAttr(refs.td, 'title', modelDisplay.title);
+      const { head, tail } = splitModelHeadTail(modelDisplay.baseText);
+      patchText(refs.headEl, head);
+      patchText(refs.tailEl, tail);
+      const showHealthTag = Boolean(
+        st.stepHealthBadge && st.stepHealthLevel && st.stepHealthLevel !== 'healthy'
+      );
+      patchAttr(refs.healthTagEl, 'hidden', !showHealthTag);
+      if (showHealthTag) {
+        patchText(refs.healthTagEl, st.stepHealthBadge);
+        patchClasses(refs.healthTagEl, {
+          'is-critical': st.stepHealthLevel === 'critical',
+          'is-notice': st.stepHealthLevel === 'notice',
+        });
+      }
+      const titleText = st.stepHealthDetail
+        ? `${modelDisplay.title} · ${st.stepHealthDetail}`
+        : modelDisplay.title;
+      patchAttr(refs.td, 'title', titleText);
     },
   },
 
@@ -15018,7 +15492,7 @@ const STEP_COLUMN_REGISTRY = Object.freeze({
     key: 'ttft',
     thLabel: () => t('stepCol.ttft.th'),
     optLabel: () => t('stepCol.ttft.opt'),
-    sigPart: (st) => `${st.ttftSec}`,
+    sigPart: (st) => `${st.ttftSec}:${st.infraNote || ''}`,
     createCell: () => {
       const valEl = h('span');
       const td = h('td', {}, [valEl]);
@@ -15028,6 +15502,7 @@ const STEP_COLUMN_REGISTRY = Object.freeze({
       patchText(refs.valEl, formatMetric(st.ttftSec, 's'));
       const tone = getTtftToneClass(st.ttftSec);
       patchAttr(refs.valEl, 'class', tone || null);
+      patchAttr(refs.td, 'title', st.infraNote || null);
     },
   },
 
@@ -15185,7 +15660,7 @@ const STEP_COLUMN_REGISTRY = Object.freeze({
     thLabel: () => t('stepCol.cache.th'),
     optLabel: () => t('stepCol.cache.opt'),
     sigPart: (st) =>
-      `${st.cacheHitPct ?? 0}:${(st.inputTokens || 0) + (st.cacheReadTokens || 0) > 0 ? 1 : 0}`,
+      `${st.cacheHitPct ?? 0}:${(st.inputTokens || 0) + (st.cacheReadTokens || 0) > 0 ? 1 : 0}:${st.cacheNote || ''}`,
     createCell: () => {
       const valEl = h('span', {
         className: 'cell-value tone-muted',
@@ -15202,6 +15677,7 @@ const STEP_COLUMN_REGISTRY = Object.freeze({
         'class',
         `cell-value ${getCacheToneClass(st.cacheHitPct ?? 0, promptTokens)}`
       );
+      patchAttr(refs.td, 'title', st.cacheNote || null);
     },
   },
 
@@ -15972,7 +16448,7 @@ function buildColumnSizerSpec(tableSteps, colKeys, wantedSet, cellCtx) {
     }
 
     if (modelCandidates) {
-      const mKey = `${st.baseModelShort || st.modelShort || ''}|${st.baseModelLabel || st.modelLabel || ''}|${st.rawModel || ''}|${st.isCompactionStep ? 1 : 0}`;
+      const mKey = `${st.baseModelShort || st.modelShort || ''}|${st.baseModelLabel || st.modelLabel || ''}|${st.rawModel || ''}|${st.isCompactionStep ? 1 : 0}|${st.stepHealthBadge || ''}`;
       if (!modelCandidates.has(mKey)) {
         modelCandidates.set(mKey, st);
       }
@@ -16107,7 +16583,11 @@ function buildColumnSizerSpec(tableSteps, colKeys, wantedSet, cellCtx) {
     let bestModelObj = firstStep;
     for (const cand of modelCandidates.values()) {
       const disp = resolveModelDisplayInfo(cand, cellCtx?.displaySettings, { fallback: '—' });
-      const len = disp.baseText?.length || 0;
+      const badgeExtra =
+        cand.stepHealthBadge && cand.stepHealthLevel && cand.stepHealthLevel !== 'healthy'
+          ? cand.stepHealthBadge.length * 2 + 2
+          : 0;
+      const len = (disp.baseText?.length || 0) + badgeExtra;
       if (len > bestModelLen) {
         bestModelLen = len;
         bestModelObj = cand;
@@ -16289,6 +16769,7 @@ const StepTableWidget = defineComponent({
       hideTurnTip();
       patchClasses(anomalyTipEl, {
         'is-danger': diag.severity === 'danger',
+        'is-notice': diag.severity === 'notice',
         'is-compaction': diag.severity === 'compaction',
       });
       patchText(anomalyTipTitleEl, diag.title);
@@ -16478,6 +16959,9 @@ const StepTableWidget = defineComponent({
       }
       if (isCompactionRow) {
         return buildStepCompactionDiagnostic(st, displaySettings);
+      }
+      if (st?.stepHealthLevel && st.stepHealthLevel !== 'healthy' && st.stepHealthDetail) {
+        return buildStepHealthDiagnostic(st);
       }
       return null;
     }
@@ -16794,8 +17278,9 @@ const StepTableWidget = defineComponent({
             : '';
           const stripeSig = isVirtualized ? (item.isStripeEven ? 'E' : 'O') : 'N';
           const anomalySig = st.anomalySig || '';
+          const healthSig = `${st.stepHealthLevel || ''}:${st.stepHealthBadge || ''}:${st.turnHealthLevel || ''}:${st.rootTurnHealthLevel || ''}`;
           const compactSig = isCompactionStepItem(st) ? 'C' : '';
-          return `${locale}:${colOrderSig}:${stripeSig}:${badgeSig}:${anomalySig}:${compactSig}:${railActive}:${item.hasTurn}:${item.hasUp}:${item.hasDown}:${item.isStart}:${item.isLatest}:${item.prompt}:${parts}`;
+          return `${locale}:${colOrderSig}:${stripeSig}:${badgeSig}:${anomalySig}:${healthSig}:${compactSig}:${railActive}:${item.hasTurn}:${item.hasUp}:${item.hasDown}:${item.isStart}:${item.isLatest}:${item.prompt}:${parts}`;
         },
         createRow: (item) => {
           if (item.isSizer) {
@@ -17038,13 +17523,26 @@ const StepTableWidget = defineComponent({
           }
 
           const hasStepAnomaly = Boolean(st?.anomaly && Number(st.anomaly.count) > 0);
-          const isAnomalyDanger = Boolean(hasStepAnomaly && st.anomaly.severity === 'danger');
-          const isAnomalyWarn = Boolean(hasStepAnomaly && !isAnomalyDanger);
+          const hasStepHealthDiag = Boolean(
+            st?.stepHealthLevel && st.stepHealthLevel !== 'healthy' && st.stepHealthDetail
+          );
+          const isHealthCritical = st?.stepHealthLevel === 'critical';
+          const isHealthWarn = st?.stepHealthLevel === 'warn';
+          const isAnomalyDanger = Boolean(
+            (hasStepAnomaly && st.anomaly.severity === 'danger') || isHealthCritical
+          );
+          const isAnomalyWarn = Boolean(
+            !isAnomalyDanger && (hasStepAnomaly || isHealthWarn)
+          );
           const isCompactionRow = isCompactionStepItem(st);
-          const hasRowTip = hasStepAnomaly || isCompactionRow;
+          const hasRowTip = hasStepAnomaly || isCompactionRow || hasStepHealthDiag;
           const rowDiagGetter = hasRowTip
             ? () => buildStepRowDiagnostic(st, cellCtx.displaySettings, hasStepAnomaly, isCompactionRow)
             : null;
+          if (tr.dataset) {
+            tr.dataset.stepIndex = String(st.stepIndex ?? '');
+            tr.dataset.agentId = String(st.agentId || 'main');
+          }
           patchClasses(tr, {
             'is-compaction': isCompactionRow,
             'is-anomaly-warn': isAnomalyWarn,
@@ -17064,10 +17562,15 @@ const StepTableWidget = defineComponent({
           patchAttr(refs.railEl, 'hidden', !showRowRail);
           if (showRowRail) {
             const marker = isStart ? ' is-origin' : !hasUp && hasDown ? ' is-cap' : '';
+            const turnLvl = activeDataset?.useRootTurn
+              ? st.rootTurnHealthLevel
+              : st.turnHealthLevel;
+            const healthCls =
+              turnLvl === 'critical' ? ' is-critical' : turnLvl === 'warn' ? ' is-warn' : '';
             patchAttr(
               refs.railEl,
               'class',
-              `turn-rail${isLatest ? ' is-latest' : ''}${hasUp ? ' has-up' : ''}${hasDown ? ' has-down' : ''}${marker}`
+              `turn-rail${isLatest ? ' is-latest' : ''}${hasUp ? ' has-up' : ''}${hasDown ? ' has-down' : ''}${marker}${healthCls}`
             );
           }
 
@@ -17363,7 +17866,73 @@ const StepTableWidget = defineComponent({
       lastRenderedRows = tableSteps;
     }
 
+    let flashTimerId = 0;
+    let flashedRowEl = null;
+
+    function clearFlashState() {
+      if (flashTimerId) {
+        clearTimeout(flashTimerId);
+        flashTimerId = 0;
+      }
+      if (flashedRowEl) {
+        patchClasses(flashedRowEl, { 'is-step-flash': false });
+        flashedRowEl = null;
+      }
+    }
+
+    function scrollToStep(targetStepIndex, targetAgentId = '') {
+      if (!activeDataset || !Array.isArray(activeDataset.tableSteps)) return false;
+      const numStep = Number(targetStepIndex);
+      if (!Number.isFinite(numStep)) return false;
+      const stepsArr = activeDataset.tableSteps;
+      let targetIdx = -1;
+      if (targetAgentId && targetAgentId !== 'all') {
+        targetIdx = stepsArr.findIndex(
+          (s) => Number(s?.stepIndex) === numStep && String(s?.agentId || 'main') === targetAgentId
+        );
+      }
+      if (targetIdx < 0) {
+        targetIdx = stepsArr.findIndex((s) => Number(s?.stepIndex) === numStep);
+      }
+      if (targetIdx < 0) return false;
+
+      if (activeDataset.isVirtualized && activeDataset.rowTops) {
+        const rowTop = activeDataset.rowTops[targetIdx] || 0;
+        const paneH = Math.max(0, Number(stepsTablePane.clientHeight || 0));
+        stepsTablePane.scrollTop = Math.max(0, Math.round(rowTop - paneH * 0.32));
+        renderCurrentWindow({ force: true });
+      }
+
+      const wantAgent = targetAgentId && targetAgentId !== 'all' ? targetAgentId : '';
+      let foundTr = null;
+      const children = stepsTbody.children || [];
+      for (let i = 0; i < children.length; i++) {
+        const tr = children[i];
+        if (!tr?.dataset) continue;
+        if (Number(tr.dataset.stepIndex) !== numStep) continue;
+        if (wantAgent && tr.dataset.agentId && tr.dataset.agentId !== wantAgent) continue;
+        foundTr = tr;
+        break;
+      }
+      if (!foundTr) return false;
+      if (!activeDataset.isVirtualized && typeof foundTr.scrollIntoView === 'function') {
+        foundTr.scrollIntoView({ block: 'center', behavior: 'instant' });
+      }
+      clearFlashState();
+      flashedRowEl = foundTr;
+      patchClasses(foundTr, { 'is-step-flash': true });
+      flashTimerId = setTimeout(() => {
+        flashTimerId = 0;
+        if (flashedRowEl === foundTr) {
+          patchClasses(foundTr, { 'is-step-flash': false });
+          flashedRowEl = null;
+        }
+      }, 2200);
+      return true;
+    }
+
     onCleanup(() => {
+      clearFlashState();
       stepsTablePane.removeEventListener('scroll', onPaneScroll);
       stepsTbody.removeEventListener('mouseleave', onTbodyLeave);
       if (scrollRafId && typeof cancelAnimationFrame === 'function') {
@@ -17394,6 +17963,7 @@ const StepTableWidget = defineComponent({
         syncTableHeaderColumns,
         renderStepTable,
         refreshViewport,
+        scrollToStep,
         hideTurnTip,
         showAnomalyTip,
         hideAnomalyTip,
@@ -21196,6 +21766,767 @@ const SettingsOtherTab = defineComponent({
 return { SettingsOtherTab };
 })();
 
+// --- src/views/settings/SettingsDetectorTab.js ---
+const { SettingsDetectorTab } = (() => {
+/**
+ * @fileoverview Preferences Tab 4: `SettingsDetectorTab.js` ("模型检测").
+ * Non-semantic multi-probe black-box model identity detector for Antigravity host models,
+ * defaulting to the active window model without polluting user conversations.
+ */
+
+
+function getDetectorProbeModeOptions() {
+  return [
+    { value: 'fast', label: t('settings.det.modeFast') },
+    { value: 'exact', label: t('settings.det.modeExact') },
+  ];
+}
+
+function formatDetectorBankSubtext(bank) {
+  if (!bank || !bank.ready) {
+    return bank?.lastSyncError ? t('settings.det.bankError') : t('settings.det.bankLoading');
+  }
+  const srcText =
+    bank.source === 'remote' ? t('settings.det.bankSrcRemote') : t('settings.det.bankSrcLocal');
+  const datePart = bank.builtAt ? String(bank.builtAt).slice(0, 10) : '';
+  if (Number(bank.lastCheckedAtMs) > 0) {
+    const d = new Date(Number(bank.lastCheckedAtMs));
+    const pad = (n) => String(n).padStart(2, '0');
+    const timeStr = `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return t('settings.det.bankCheckedAt', { src: srcText, time: timeStr });
+  }
+  return datePart ? `${srcText} · ${datePart}` : srcText;
+}
+
+function formatDetectorOptionMeta(model) {
+  if (!model) return '';
+  if (model.isQuotaExhausted) return t('settings.det.quotaExhausted');
+  if (Number.isFinite(model.remainingPct)) {
+    return t('settings.det.remQuota', { pct: model.remainingPct });
+  }
+  return model.tagTitle || '';
+}
+
+function formatDetectorHistoryClock(isoStr) {
+  const ms = Date.parse(String(isoStr || ''));
+  if (!Number.isFinite(ms)) return '';
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const SettingsDetectorTab = defineComponent({
+  name: 'SettingsDetectorTab',
+  setup({ onCleanup, getProps }) {
+    let selectedDetectorModelId = CURRENT_WINDOW_MODEL_VALUE;
+    let detectorSnapshot = null;
+    let inspectedHistoryId = '';
+    let wasDetectorRunning = false;
+    let detectorFeedbackTimer = null;
+    let detectorPollTimer = null;
+
+    const notifyLayout = () => {
+      const fn = getProps()?.onLayoutChange;
+      if (typeof fn === 'function') fn();
+    };
+
+    const detectorStatusMsg = h('span', {
+      className: 'text-muted',
+      style: 'font-size: var(--fs-md);',
+      text: '',
+    });
+
+    function showDetectorFeedback(text, autoClearMs = 3500) {
+      if (detectorFeedbackTimer) {
+        clearTimeout(detectorFeedbackTimer);
+        detectorFeedbackTimer = null;
+      }
+      patchText(detectorStatusMsg, text);
+      if (text && autoClearMs > 0) {
+        detectorFeedbackTimer = setTimeout(() => {
+          detectorFeedbackTimer = null;
+          patchText(detectorStatusMsg, '');
+        }, autoClearMs);
+      }
+    }
+
+    const detectorModelSelect = CustomSelect({
+      modelValue: CURRENT_WINDOW_MODEL_VALUE,
+      icon: 'fingerprint',
+      options: [
+        {
+          value: CURRENT_WINDOW_MODEL_VALUE,
+          label: t('settings.det.curWinAuto'),
+          meta: t('settings.det.defaultMeta'),
+        },
+      ],
+      onUpdateModelValue: (val) => {
+        selectedDetectorModelId = val || CURRENT_WINDOW_MODEL_VALUE;
+        renderDetectorSnapshot(detectorSnapshot);
+      },
+    });
+
+    const detectorProbeModeSwitch = SegmentedControl({
+      ariaLabel: t('settings.det.modeAria'),
+      modelValue: uiStore.getState().detectorProbeMode || 'fast',
+      options: getDetectorProbeModeOptions(),
+      onUpdateModelValue: (nextMode) => {
+        const mode = nextMode === 'exact' ? 'exact' : 'fast';
+        uiStore.setState({ detectorProbeMode: mode });
+        detectorProbeModeSwitch.setValue(mode);
+      },
+    });
+
+    const controlTitleTextEl = h('span', { text: t('settings.det.title') });
+    const modelFieldLabelEl = h('span', {
+      className: 'form-label',
+      text: t('settings.det.modelLabel'),
+    });
+    const modeFieldLabelEl = h('span', {
+      className: 'form-label',
+      text: t('settings.det.modeLabel'),
+    });
+    const agCellLabelEl = h('span', {
+      className: 'cell-label',
+      text: t('settings.det.agCellLabel'),
+    });
+    const bankCellLabelEl = h('span', {
+      className: 'cell-label',
+      text: t('settings.det.bankCellLabel'),
+    });
+
+    const agModelCountVal = h('strong', { className: 'cell-value', text: '—' });
+    const agModelRefSub = h('span', {
+      className: 'cell-sub',
+      text: t('settings.det.agSyncing'),
+    });
+    const bankCountVal = h('strong', { className: 'cell-value', text: '—' });
+    const bankSyncSub = h('span', {
+      className: 'cell-sub',
+      text: t('settings.det.bankLoading'),
+    });
+
+    const syncDetectorBtnText = h('span', { text: t('settings.det.syncBtn') });
+    const startDetectBtnText = h('span', { text: t('settings.det.startBtn') });
+    const cancelDetectBtnText = h('span', { text: t('settings.det.cancelBtn') });
+
+    const syncDetectorBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'btn-secondary',
+        onclick: async () => {
+          patchAttr(syncDetectorBtn, 'disabled', true);
+          patchAttr(startDetectBtn, 'disabled', true);
+          patchText(syncDetectorBtnText, t('settings.det.syncingBtn'));
+          showDetectorFeedback(t('settings.det.syncingMsg'), 0);
+          try {
+            const res = await syncModelDetector({
+              knownModels: detectorSnapshot?.availableModels || [],
+            });
+            if (res) {
+              detectorSnapshot = res;
+              renderDetectorSnapshot(res);
+            }
+            const sr = res?.syncResult;
+            const agCount = Array.isArray(res?.availableModels) ? res.availableModels.length : 0;
+            if (sr?.error) {
+              showDetectorFeedback(
+                t('settings.det.syncOfflineMsg', { count: agCount }),
+                4500
+              );
+            } else if (sr?.updated) {
+              showDetectorFeedback(
+                t('settings.det.syncUpdatedMsg', {
+                  bankCount: res?.bank?.modelCount || 0,
+                  count: agCount,
+                }),
+                4000
+              );
+            } else {
+              showDetectorFeedback(
+                t('settings.det.syncUpToDateMsg', { count: agCount }),
+                3500
+              );
+            }
+          } catch (err) {
+            showDetectorFeedback(err?.message || t('settings.det.syncFailedMsg'), 4500);
+          } finally {
+            patchText(syncDetectorBtnText, t('settings.det.syncBtn'));
+            renderDetectorSnapshot(detectorSnapshot);
+          }
+        },
+      },
+      [createSvgIcon('refresh', { size: 12 }), syncDetectorBtnText]
+    );
+
+    const startDetectBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'btn-primary',
+        onclick: async () => {
+          patchAttr(startDetectBtn, 'disabled', true);
+          patchAttr(syncDetectorBtn, 'disabled', true);
+          showDetectorFeedback(t('settings.det.startingMsg'), 0);
+          try {
+            const res = await triggerModelDetection({
+              modelId: selectedDetectorModelId,
+              probeMode: uiStore.getState().detectorProbeMode || 'fast',
+              knownModels: detectorSnapshot?.availableModels || [],
+            });
+            inspectedHistoryId = '';
+            if (res?.status) {
+              wasDetectorRunning = Boolean(res.status.running?.active);
+              detectorSnapshot = res.status;
+              renderDetectorSnapshot(res.status);
+              ensureDetectorPollLoop();
+            }
+            showDetectorFeedback('', 0);
+          } catch (err) {
+            showDetectorFeedback(err?.message || t('settings.det.startFailedMsg'), 4500);
+            patchAttr(startDetectBtn, 'disabled', false);
+            patchAttr(syncDetectorBtn, 'disabled', false);
+          }
+        },
+      },
+      [createSvgIcon('bolt', { size: 12 }), startDetectBtnText]
+    );
+
+    const detectorIdleActionsRow = h('div', { className: 'cloud-actions-row' }, [
+      syncDetectorBtn,
+      startDetectBtn,
+    ]);
+
+    const detectorProgressPhase = h('span', {
+      className: 'detector-progress-phase',
+      text: t('settings.det.runningDefault'),
+    });
+    const detectorProgressElapsed = h('span', {
+      className: 'detector-progress-elapsed',
+      text: '0.0s',
+    });
+    const detectorProgressFill = h('div', { className: 'progress-fill' });
+    patchStyleVar(detectorProgressFill, '--fill-w', '12%');
+
+    const cancelDetectBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'btn-secondary',
+        onclick: async () => {
+          patchAttr(cancelDetectBtn, 'disabled', true);
+          try {
+            const res = await cancelModelDetection({
+              knownModels: detectorSnapshot?.availableModels || [],
+            });
+            stopDetectorPollLoop();
+            wasDetectorRunning = false;
+            if (res?.status) {
+              detectorSnapshot = res.status;
+              renderDetectorSnapshot(res.status);
+            }
+            showDetectorFeedback(t('settings.det.canceledMsg'), 2200);
+          } catch (err) {
+            showDetectorFeedback(err?.message || t('settings.det.cancelFailedMsg'), 3000);
+          } finally {
+            patchAttr(cancelDetectBtn, 'disabled', false);
+          }
+        },
+      },
+      [createSvgIcon('close', { size: 12 }), cancelDetectBtnText]
+    );
+
+    const detectorProgressBox = h(
+      'div',
+      { className: 'detector-progress-box', hidden: true },
+      [
+        h('div', { className: 'detector-progress-head' }, [
+          detectorProgressPhase,
+          detectorProgressElapsed,
+        ]),
+        h('div', { className: 'progress-track' }, [detectorProgressFill]),
+        h('div', { className: 'cloud-actions-row' }, [cancelDetectBtn]),
+      ]
+    );
+
+    const detectorControlPanel = h('section', { className: 'panel' }, [
+      h('div', { className: 'panel-header' }, [
+        h('span', { className: 'panel-title' }, [
+          createSvgIcon('fingerprint', { size: 13 }),
+          controlTitleTextEl,
+        ]),
+        detectorStatusMsg,
+      ]),
+      h('div', { className: 'form-row' }, [
+        modelFieldLabelEl,
+        h('div', { className: 'detector-select-box' }, [detectorModelSelect.el]),
+      ]),
+      h('div', { className: 'settings-inline-row detector-mode-row' }, [
+        modeFieldLabelEl,
+        detectorProbeModeSwitch.el,
+      ]),
+      h('div', { className: 'dual-grid' }, [
+        h('div', { className: 'matrix-cell' }, [agCellLabelEl, agModelCountVal, agModelRefSub]),
+        h('div', { className: 'matrix-cell' }, [bankCellLabelEl, bankCountVal, bankSyncSub]),
+      ]),
+      detectorIdleActionsRow,
+      detectorProgressBox,
+    ]);
+
+    const verdictTitleTextEl = h('span', { text: t('settings.det.verdictTitle') });
+    const verdictMetaText = h('span', { className: 'panel-meta detector-verdict-meta', text: '' });
+    const detectorEmptyNote = h('div', {
+      className: 'detector-empty-note',
+      text: t('settings.det.emptyNote'),
+    });
+
+    const verdictStatusTag = h('span', { className: 'status-tag', text: t('settings.det.doneBadge') });
+    const verdictTargetText = h('span', { className: 'detector-verdict-target', text: '' });
+    const verdictHeadline = h('div', { className: 'detector-headline', text: '' });
+    const verdictDetail = h('div', { className: 'detector-detail', text: '' });
+
+    const candidateListEl = h('div', { className: 'detector-candidates', hidden: true });
+    const historyLabelEl = h('span', {
+      className: 'detector-history-label',
+      text: t('settings.det.historyTitle'),
+    });
+    const historyListEl = h('div', { className: 'detector-history-list' });
+    const historySectionEl = h(
+      'div',
+      { className: 'detector-history-section', hidden: true },
+      [historyLabelEl, historyListEl]
+    );
+
+    const detectorVerdictBody = h(
+      'div',
+      { className: 'detector-verdict-body', hidden: true },
+      [
+        h('div', { className: 'detector-verdict-box' }, [
+          h('div', { className: 'detector-verdict-top' }, [
+            h('div', { className: 'detector-verdict-left' }, [
+              verdictStatusTag,
+              verdictTargetText,
+            ]),
+          ]),
+          verdictHeadline,
+          verdictDetail,
+        ]),
+        candidateListEl,
+        historySectionEl,
+      ]
+    );
+
+    const detectorResultPanel = h('section', { className: 'panel' }, [
+      h('div', { className: 'panel-header' }, [
+        h('span', { className: 'panel-title' }, [
+          createSvgIcon('pulse', { size: 13 }),
+          verdictTitleTextEl,
+        ]),
+        verdictMetaText,
+      ]),
+      detectorEmptyNote,
+      detectorVerdictBody,
+    ]);
+
+    const rootEl = h('div', { className: 'settings-tab-stack' }, [
+      detectorControlPanel,
+      detectorResultPanel,
+    ]);
+
+    function renderDetectorSnapshot(snap) {
+      if (!snap) return;
+      const models = Array.isArray(snap.availableModels) ? snap.availableModels : [];
+      const curWin = snap.currentWindowModel || null;
+      const bank = snap.bank || null;
+      const running = snap.running?.active ? snap.running : null;
+
+      if (
+        selectedDetectorModelId !== CURRENT_WINDOW_MODEL_VALUE &&
+        models.length > 0 &&
+        !models.some((m) => m.modelId === selectedDetectorModelId)
+      ) {
+        selectedDetectorModelId = CURRENT_WINDOW_MODEL_VALUE;
+      }
+
+      const curLabel = curWin?.label
+        ? t('settings.det.curWinNamed', { label: curWin.label })
+        : t('settings.det.curWinAuto');
+      const curMeta = curWin
+        ? formatDetectorOptionMeta(curWin) || t('settings.det.defaultMeta')
+        : t('settings.det.defaultMeta');
+
+      const selectOptions = [
+        {
+          value: CURRENT_WINDOW_MODEL_VALUE,
+          label: curLabel,
+          meta: curMeta,
+        },
+        ...models.map((m) => ({
+          value: m.modelId,
+          label: m.label,
+          meta: formatDetectorOptionMeta(m),
+        })),
+      ];
+      detectorModelSelect.setProps({
+        modelValue: selectedDetectorModelId,
+        options: selectOptions,
+      });
+
+      const activeTarget =
+        selectedDetectorModelId === CURRENT_WINDOW_MODEL_VALUE
+          ? curWin || models[0] || null
+          : models.find((m) => m.modelId === selectedDetectorModelId) || null;
+
+      patchText(
+        agModelCountVal,
+        models.length > 0
+          ? t('settings.det.agCount', { count: models.length })
+          : t('settings.det.agLoading')
+      );
+      if (activeTarget) {
+        const refText =
+          activeTarget.reference && activeTarget.reference !== 'unknown'
+            ? t('settings.det.agRefMatch', { ref: activeTarget.reference })
+            : t('settings.det.agOpenSync');
+        patchText(agModelRefSub, refText);
+      } else {
+        patchText(agModelRefSub, t('settings.det.agAutoHost'));
+      }
+
+      patchText(
+        bankCountVal,
+        bank?.ready
+          ? t('settings.det.bankCount', { count: bank.modelCount || 0 })
+          : t('settings.det.bankNotReady')
+      );
+      patchText(bankSyncSub, formatDetectorBankSubtext(bank));
+
+      const isBusy = Boolean(running);
+      patchAttr(detectorIdleActionsRow, 'hidden', isBusy);
+      patchAttr(detectorProgressBox, 'hidden', !isBusy);
+      patchAttr(syncDetectorBtn, 'disabled', isBusy || Boolean(bank?.isSyncing));
+      patchAttr(startDetectBtn, 'disabled', isBusy || !bank?.ready || models.length === 0);
+
+      if (running) {
+        patchText(
+          detectorProgressPhase,
+          running.phaseText ||
+            t('settings.det.runningTarget', { target: running.targetLabel || '' })
+        );
+        const sec = ((running.elapsedMs || 0) / 1000).toFixed(1);
+        patchText(detectorProgressElapsed, `${sec}s`);
+        const completed = Number(running.completedProbes || 0);
+        const total = Math.max(1, Number(running.totalProbes || 3));
+        const liveNums = Number(running.liveParsedNumbers || 0);
+        const expectedNums = Math.max(300, Number(running.expectedTotalNumbers || 900));
+        const activeThinking = Number(running.activeThinkingProbes || 0);
+        let pct = 14;
+        if (completed >= total) {
+          pct = 94;
+        } else {
+          const donePct = (completed / total) * 74;
+          const streamPct = Math.min(0.95, liveNums / expectedNums) * 74;
+          const thinkBoost = activeThinking > 0 ? Math.min(18, activeThinking * 5) : 0;
+          pct = Math.round(14 + Math.max(donePct, streamPct, thinkBoost));
+        }
+        patchStyleVar(detectorProgressFill, '--fill-w', `${Math.max(12, Math.min(95, pct))}%`);
+      }
+
+      const history = Array.isArray(snap.history) ? snap.history : [];
+      const activeRecord =
+        (inspectedHistoryId && history.find((item) => item?.id === inspectedHistoryId)) ||
+        snap.latestResult ||
+        history[0] ||
+        null;
+
+      if (!activeRecord) {
+        patchAttr(detectorEmptyNote, 'hidden', false);
+        patchAttr(detectorVerdictBody, 'hidden', true);
+        patchText(verdictMetaText, '');
+      } else {
+        patchAttr(detectorEmptyNote, 'hidden', true);
+        patchAttr(detectorVerdictBody, 'hidden', false);
+
+        const tone = activeRecord.summary?.tone || 'neutral';
+        patchText(verdictStatusTag, activeRecord.summary?.badge || t('settings.det.doneBadge'));
+        patchClasses(verdictStatusTag, {
+          'state-synced': tone === 'ok' || tone === 'good' || tone === 'info',
+          'state-warn': tone === 'warn',
+          'state-danger': tone === 'bad',
+          'state-neutral': tone === 'neutral',
+        });
+
+        const targetSuffix = activeRecord.usedCurrentWindowDefault
+          ? t('settings.det.curWinSuffix')
+          : '';
+        patchText(
+          verdictTargetText,
+          `${activeRecord.targetLabel || activeRecord.targetModelId || ''}${targetSuffix}`
+        );
+        patchText(verdictHeadline, activeRecord.summary?.headline || '');
+        patchText(verdictDetail, activeRecord.summary?.detail || '');
+
+        const durSec = Number.isFinite(activeRecord.elapsedMs)
+          ? `${(activeRecord.elapsedMs / 1000).toFixed(1)}s`
+          : '';
+        const sampleMeta =
+          activeRecord.usedOutputs > 0
+            ? t('settings.det.sampleMeta', {
+                used: activeRecord.usedOutputs,
+                nums: activeRecord.totalNumbers || 0,
+              })
+            : '';
+        const modeMeta = activeRecord.ok
+          ? activeRecord.fastTierRouted
+            ? t('settings.det.modeFast')
+            : activeRecord.probeMode === 'exact'
+              ? t('settings.det.modeExact')
+              : ''
+          : '';
+        patchText(verdictMetaText, [durSec, sampleMeta, modeMeta].filter(Boolean).join(' · '));
+
+        const topCands = Array.isArray(activeRecord.topCandidates)
+          ? activeRecord.topCandidates.slice(0, 3)
+          : [];
+        patchAttr(candidateListEl, 'hidden', topCands.length === 0);
+
+        if (topCands.length > 0) {
+          const maxRaw = Math.max(
+            ...topCands.map((c) => Number(c.rawScore ?? c.score ?? 0)),
+            1e-6
+          );
+          const minRaw = Math.min(
+            ...topCands.map((c) => Number(c.rawScore ?? c.score ?? 0)),
+            0
+          );
+          const spanRaw = Math.max(maxRaw - minRaw, 1e-6);
+
+          patchKeyedList(candidateListEl, topCands, {
+            keyFn: (cand) => cand.model || cand.label,
+            sigFn: (cand, idx) =>
+              `${idx}::${cand.label}::${cand.probability ?? ''}::${cand.score ?? ''}`,
+            createRow: () => {
+              const rankEl = h('span', { className: 'detector-cand-rank' });
+              const nameEl = h('span', { className: 'detector-cand-name' });
+              const fillEl = h('div', { className: 'detector-cand-fill' });
+              const trackEl = h('div', { className: 'detector-cand-track' }, [fillEl]);
+              const pctEl = h('span', { className: 'detector-cand-pct' });
+              const rowEl = h('div', { className: 'detector-cand-row' }, [
+                rankEl,
+                nameEl,
+                trackEl,
+                pctEl,
+              ]);
+              return { el: rowEl, refs: { rankEl, nameEl, fillEl, pctEl } };
+            },
+            updateRow: (refs, cand, idx, rowEl) => {
+              patchClasses(rowEl, { 'is-top': idx === 0 });
+              patchText(refs.rankEl, `#${idx + 1}`);
+              patchText(refs.nameEl, cand.label || cand.model || '');
+              patchAttr(
+                refs.nameEl,
+                'title',
+                cand.familyName ? `${cand.label} (${cand.familyName})` : cand.label || ''
+              );
+              if (Number.isFinite(cand.probability)) {
+                const pct = Math.max(0, Math.min(100, cand.probability * 100));
+                patchStyleVar(refs.fillEl, '--cand-w', `${Math.max(4, Math.round(pct))}%`);
+                patchText(refs.pctEl, `${pct.toFixed(1)}%`);
+              } else {
+                const rel = Math.round(
+                  25 + ((Number(cand.rawScore ?? cand.score ?? 0) - minRaw) / spanRaw) * 75
+                );
+                patchStyleVar(refs.fillEl, '--cand-w', `${Math.max(8, Math.min(100, rel))}%`);
+                patchText(refs.pctEl, Number(cand.score ?? 0).toFixed(2));
+              }
+            },
+          });
+        }
+
+        const showHistory = history.length > 1;
+        patchAttr(historySectionEl, 'hidden', !showHistory);
+        if (showHistory) {
+          const histSlice = history.slice(0, 4);
+          patchKeyedList(historyListEl, histSlice, {
+            keyFn: (item) => item.id,
+            sigFn: (item) =>
+              `${item.id}::${item.id === activeRecord.id}::${item.summary?.badge || ''}::${item.targetLabel || ''}`,
+            createRow: (item) => {
+              const badgeEl = h('span', { className: 'detector-history-badge' });
+              const modelEl = h('span', { className: 'detector-history-model' });
+              const timeEl = h('span', { className: 'detector-history-time' });
+              const btnEl = h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'detector-history-item',
+                  onclick: () => {
+                    inspectedHistoryId = item.id;
+                    renderDetectorSnapshot(detectorSnapshot);
+                  },
+                },
+                [
+                  h('span', { className: 'detector-history-item-left' }, [badgeEl, modelEl]),
+                  timeEl,
+                ]
+              );
+              return { el: btnEl, refs: { badgeEl, modelEl, timeEl } };
+            },
+            updateRow: (refs, item, _idx, btnEl) => {
+              const selected = item.id === activeRecord.id;
+              const hTone = item.summary?.tone || 'neutral';
+              patchClasses(btnEl, { 'is-selected': selected });
+              patchText(refs.badgeEl, item.summary?.badge || t('settings.det.doneBadge'));
+              patchClasses(refs.badgeEl, {
+                'tone-good': hTone === 'ok' || hTone === 'good',
+                'tone-info': hTone === 'info',
+                'tone-warn': hTone === 'warn',
+                'tone-bad': hTone === 'bad',
+              });
+              patchText(refs.modelEl, item.targetLabel || item.targetModelId || '');
+              patchText(refs.timeEl, formatDetectorHistoryClock(item.createdAt));
+            },
+          });
+        }
+      }
+
+      notifyLayout();
+    }
+
+    function stopDetectorPollLoop() {
+      if (detectorPollTimer) {
+        clearTimeout(detectorPollTimer);
+        detectorPollTimer = null;
+      }
+    }
+
+    async function refreshDetectorStatus({ force = false } = {}) {
+      try {
+        const snap = await fetchModelDetectorStatus({
+          force,
+          knownModels: detectorSnapshot?.availableModels || [],
+        });
+        if (!snap) return;
+        const nowRunning = Boolean(snap.running?.active);
+        if (wasDetectorRunning && !nowRunning) {
+          inspectedHistoryId = '';
+          void fetchTelemetry({ force: true });
+        }
+        wasDetectorRunning = nowRunning;
+        detectorSnapshot = snap;
+        renderDetectorSnapshot(snap);
+        if (nowRunning) {
+          ensureDetectorPollLoop();
+        } else {
+          stopDetectorPollLoop();
+        }
+      } catch {
+        // Ignore transient poll jitter
+      }
+    }
+
+    function ensureDetectorPollLoop() {
+      if (detectorPollTimer) return;
+      const tick = async () => {
+        detectorPollTimer = null;
+        if (!detectorSnapshot?.running?.active) return;
+        await refreshDetectorStatus({ force: false });
+        if (detectorSnapshot?.running?.active && !detectorPollTimer) {
+          detectorPollTimer = setTimeout(tick, 850);
+        }
+      };
+      detectorPollTimer = setTimeout(tick, 850);
+    }
+
+    function activate() {
+      void refreshDetectorStatus({ force: false });
+    }
+
+    function deactivate() {
+      stopDetectorPollLoop();
+      detectorModelSelect.close();
+    }
+
+    function refreshLabels() {
+      patchText(controlTitleTextEl, t('settings.det.title'));
+      patchText(modelFieldLabelEl, t('settings.det.modelLabel'));
+      patchText(modeFieldLabelEl, t('settings.det.modeLabel'));
+      patchText(agCellLabelEl, t('settings.det.agCellLabel'));
+      patchText(bankCellLabelEl, t('settings.det.bankCellLabel'));
+      patchText(syncDetectorBtnText, t('settings.det.syncBtn'));
+      patchText(startDetectBtnText, t('settings.det.startBtn'));
+      patchText(cancelDetectBtnText, t('settings.det.cancelBtn'));
+      patchText(verdictTitleTextEl, t('settings.det.verdictTitle'));
+      patchText(detectorEmptyNote, t('settings.det.emptyNote'));
+      patchText(historyLabelEl, t('settings.det.historyTitle'));
+      detectorProbeModeSwitch.setProps({
+        ariaLabel: t('settings.det.modeAria'),
+        modelValue: uiStore.getState().detectorProbeMode || 'fast',
+        options: getDetectorProbeModeOptions(),
+      });
+      if (detectorSnapshot) {
+        renderDetectorSnapshot(detectorSnapshot);
+      } else {
+        detectorModelSelect.setProps({
+          modelValue: selectedDetectorModelId,
+          options: [
+            {
+              value: CURRENT_WINDOW_MODEL_VALUE,
+              label: t('settings.det.curWinAuto'),
+              meta: t('settings.det.defaultMeta'),
+            },
+          ],
+        });
+        patchText(agModelRefSub, t('settings.det.agSyncing'));
+        patchText(bankSyncSub, t('settings.det.bankLoading'));
+      }
+    }
+
+    let prevActiveCascadeId =
+      telemetryStore.getState().telemetry?.activeConversation?.cascadeId || '';
+    const unsubTelemetry = telemetryStore.subscribe(
+      (st) => st.telemetry?.activeConversation?.cascadeId || '',
+      (nextCid) => {
+        if (nextCid === prevActiveCascadeId) return;
+        prevActiveCascadeId = nextCid;
+        if (!rootEl.hasAttribute('hidden')) {
+          void refreshDetectorStatus({ force: false });
+        }
+      }
+    );
+
+    onCleanup(() => {
+      unsubTelemetry();
+      stopDetectorPollLoop();
+      if (detectorFeedbackTimer) {
+        clearTimeout(detectorFeedbackTimer);
+        detectorFeedbackTimer = null;
+      }
+      detectorModelSelect.destroy();
+      detectorProbeModeSwitch.destroy();
+    });
+
+    return {
+      el: rootEl,
+      refs: {
+        detectorModelSelect,
+        detectorProbeModeSwitch,
+        syncDetectorBtn,
+        startDetectBtn,
+        cancelDetectBtn,
+        activate,
+        deactivate,
+        refreshDetectorStatus,
+        renderDetectorSnapshot,
+        refreshLabels,
+      },
+    };
+  },
+});
+return { SettingsDetectorTab };
+})();
+
 // --- src/components/layout/TopSessionHeader.js ---
 const { TopSessionHeader } = (() => {
 /**
@@ -21564,6 +22895,247 @@ const { LiveOverviewView } = (() => {
 const LiveOverviewView = defineComponent({
   name: 'LiveOverviewView',
   setup({ onCleanup }) {
+    const primaryCopyTimer = { id: null };
+    const secondaryCopyTimer = { id: null };
+    let activeRenderedAlert = null;
+    const boundActionMap = new Map();
+
+    const healthBadgeEl = h('span', {
+      className: 'health-cat-badge',
+      text: t('health.badgeFallback'),
+    });
+    const healthTitleEl = h('strong', { className: 'health-alert-title', text: '' });
+    const healthScoreEl = h('span', { className: 'health-score-pill text-mono', text: '' });
+    const healthDismissBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'icon-btn health-dismiss-btn',
+        'aria-label': t('health.dismissAria'),
+        title: t('health.dismissTitle'),
+        onclick: () => {
+          if (activeRenderedAlert?.alertKey) {
+            uiStore.setState({ dismissedHealthAlertKey: activeRenderedAlert.alertKey });
+          }
+        },
+      },
+      [createSvgIcon('close', { size: 11 })]
+    );
+    const healthSummaryEl = h('div', { className: 'health-alert-summary', text: '' });
+    const healthReasonSlots = [0, 1, 2].map(() =>
+      h('div', { className: 'health-reason-item text-mono', hidden: true, text: '' })
+    );
+    const healthReasonsEl = h('div', { className: 'health-reasons-list' }, healthReasonSlots);
+
+    function jumpToHealthStep(stepIndex, agentId) {
+      if (stepIndex == null || !Number.isFinite(Number(stepIndex))) return;
+      const now = Date.now();
+      uiStore.setState({
+        activeView: 'steps',
+        stepsSubTab: 'steps',
+        ...(agentId && agentId !== 'main' && agentId !== 'all'
+          ? { selectedAgentScope: agentId }
+          : {}),
+        highlightedStepTarget: {
+          cascadeId: latestData?.activeConversation?.cascadeId || '',
+          agentId: agentId || '',
+          stepIndex: Number(stepIndex),
+          ts: now,
+          seq: now,
+        },
+      });
+    }
+
+    async function invokeBoundHealthAction(btnEl) {
+      const spec = boundActionMap.get(btnEl);
+      if (!spec?.action) return;
+      const { action, iconEl, labelEl, timerSlot } = spec;
+      if (action.kind === 'copy') {
+        await copyWithTimedFeedback(action.copyText, timerSlot, (copied) => {
+          patchSvgIcon(iconEl, copied ? 'check' : 'copy');
+          patchText(
+            labelEl,
+            copied ? action.toast || t('health.copiedToast') : action.label || ''
+          );
+          patchClasses(btnEl, { 'is-copied': copied });
+        });
+      } else if (action.kind === 'jump_step') {
+        jumpToHealthStep(action.stepIndex, action.agentId);
+      }
+    }
+
+    function bindHealthActionButton(btnEl, iconEl, labelEl, action, timerSlot, defaultClass) {
+      if (!action) {
+        patchAttr(btnEl, 'hidden', true);
+        boundActionMap.delete(btnEl);
+        return;
+      }
+      patchAttr(btnEl, 'hidden', false);
+      const isCopy = action.kind === 'copy';
+      patchSvgIcon(iconEl, isCopy ? 'copy' : 'table');
+      patchText(labelEl, action.label || '');
+      patchAttr(btnEl, 'class', defaultClass);
+      boundActionMap.set(btnEl, { action, iconEl, labelEl, timerSlot });
+    }
+
+    const primaryBtnIcon = createSvgIcon('copy', { size: 11 });
+    const primaryBtnLabel = h('span', { text: '' });
+    const healthPrimaryBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'btn-health-action is-primary',
+        hidden: true,
+        onclick: () => void invokeBoundHealthAction(healthPrimaryBtn),
+      },
+      [primaryBtnIcon, primaryBtnLabel]
+    );
+
+    const secondaryBtnIcon = createSvgIcon('copy', { size: 11 });
+    const secondaryBtnLabel = h('span', { text: '' });
+    const healthSecondaryBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'btn-health-action',
+        hidden: true,
+        onclick: () => void invokeBoundHealthAction(healthSecondaryBtn),
+      },
+      [secondaryBtnIcon, secondaryBtnLabel]
+    );
+
+    const jumpBtnIcon = createSvgIcon('table', { size: 11 });
+    const jumpBtnLabel = h('span', { text: '' });
+    const healthJumpBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'btn-health-action is-ghost',
+        hidden: true,
+        onclick: () => void invokeBoundHealthAction(healthJumpBtn),
+      },
+      [jumpBtnIcon, jumpBtnLabel]
+    );
+
+    const healthAlertPanel = h(
+      'section',
+      { className: 'panel health-alert-panel', hidden: true },
+      [
+        h('div', { className: 'health-alert-head' }, [
+          h('div', { className: 'health-alert-title-wrap' }, [
+            createSvgIcon('warning', { size: 13, className: 'health-alert-icon' }),
+            healthBadgeEl,
+            healthTitleEl,
+          ]),
+          h('div', { className: 'health-alert-head-right' }, [
+            healthScoreEl,
+            healthDismissBtn,
+          ]),
+        ]),
+        healthSummaryEl,
+        healthReasonsEl,
+        h('div', { className: 'health-alert-actions' }, [
+          healthPrimaryBtn,
+          healthSecondaryBtn,
+          healthJumpBtn,
+        ]),
+      ]
+    );
+
+    function renderHealthAlert(data) {
+      if (!data) {
+        patchAttr(healthAlertPanel, 'hidden', true);
+        activeRenderedAlert = null;
+        return;
+      }
+      const uiSt = uiStore.getState();
+      const { scopedConv, ctxAgent } = resolveScopedConversation(
+        data,
+        'all',
+        uiSt.ctxInspectorAgentId
+      );
+      const active =
+        (uiSt.ctxInspectorAgentId && uiSt.ctxInspectorAgentId !== 'auto' ? ctxAgent : null) ||
+        scopedConv ||
+        data.activeConversation ||
+        {};
+      const healthInfo =
+        active.inferenceHealth ||
+        data.activeConversation?.aggregated?.inferenceHealth ||
+        data.activeConversation?.inferenceHealth ||
+        null;
+      const rawAlert = healthInfo?.activeAlert || null;
+      const showAlert = Boolean(
+        rawAlert && rawAlert.alertKey && rawAlert.alertKey !== uiSt.dismissedHealthAlertKey
+      );
+      patchAttr(healthAlertPanel, 'hidden', !showAlert);
+      if (!showAlert) {
+        activeRenderedAlert = null;
+        return;
+      }
+      activeRenderedAlert = rawAlert;
+      patchClasses(healthAlertPanel, { 'is-critical': rawAlert.level === 'critical' });
+      patchText(healthBadgeEl, rawAlert.badge || t('health.badgeFallback'));
+      patchText(healthTitleEl, rawAlert.title || t('health.titleFallback'));
+      patchAttr(healthTitleEl, 'title', rawAlert.title || '');
+      patchAttr(healthDismissBtn, 'aria-label', t('health.dismissAria'));
+      patchAttr(healthDismissBtn, 'title', t('health.dismissTitle'));
+      const alertStateWord =
+        rawAlert.stateLabel ||
+        (rawAlert.level === 'critical' ? t('health.stateCritical') : t('health.stateWarn'));
+      patchText(
+        healthScoreEl,
+        rawAlert.turnIndex
+          ? t('health.turnPill', { turn: rawAlert.turnIndex, state: alertStateWord })
+          : alertStateWord
+      );
+      patchText(healthSummaryEl, rawAlert.summary || '');
+      const reasons = Array.isArray(rawAlert.reasons) ? rawAlert.reasons : [];
+      patchAttr(healthReasonsEl, 'hidden', reasons.length === 0);
+      for (let rIdx = 0; rIdx < healthReasonSlots.length; rIdx++) {
+        const rText = reasons[rIdx] || '';
+        patchAttr(healthReasonSlots[rIdx], 'hidden', !rText);
+        patchText(healthReasonSlots[rIdx], rText);
+      }
+      bindHealthActionButton(
+        healthPrimaryBtn,
+        primaryBtnIcon,
+        primaryBtnLabel,
+        rawAlert.primaryAction,
+        primaryCopyTimer,
+        'btn-health-action is-primary'
+      );
+      bindHealthActionButton(
+        healthSecondaryBtn,
+        secondaryBtnIcon,
+        secondaryBtnLabel,
+        rawAlert.secondaryAction,
+        secondaryCopyTimer,
+        'btn-health-action'
+      );
+      const bothCopy =
+        rawAlert.primaryAction?.kind === 'copy' && rawAlert.secondaryAction?.kind === 'copy';
+      const showExtraJump = bothCopy && rawAlert.anchorStepIndex != null;
+      if (showExtraJump) {
+        bindHealthActionButton(
+          healthJumpBtn,
+          jumpBtnIcon,
+          jumpBtnLabel,
+          {
+            kind: 'jump_step',
+            label: t('health.jumpLabel', { step: rawAlert.anchorStepIndex }),
+            stepIndex: rawAlert.anchorStepIndex,
+            agentId: rawAlert.agentId,
+          },
+          primaryCopyTimer,
+          'btn-health-action is-ghost'
+        );
+      } else {
+        patchAttr(healthJumpBtn, 'hidden', true);
+        boundActionMap.delete(healthJumpBtn);
+      }
+    }
+
     const overviewInner = h('div', {
       className: 'overview-modules-host',
     });
@@ -21575,8 +23147,14 @@ const LiveOverviewView = defineComponent({
       initialModuleKeys: DEFAULT_CLIENT_OVERVIEW_MODULES,
     });
 
+    const overviewScrollRoot = h(
+      'div',
+      { className: 'overview-scroll-root' },
+      [healthAlertPanel, overviewInner]
+    );
+
     const viewScrollbar = CustomScrollbar({
-      contentEl: overviewInner,
+      contentEl: overviewScrollRoot,
       className: 'view-pane',
     });
 
@@ -21607,6 +23185,7 @@ const LiveOverviewView = defineComponent({
 
     function renderData(data) {
       if (!data) return;
+      renderHealthAlert(data);
       const moduleKeys = normalizeClientOverviewModules(data.settings?.overviewModules);
       const minuteTick = Math.floor(Date.now() / 30000);
       widgetHost.update({
@@ -21641,15 +23220,20 @@ const LiveOverviewView = defineComponent({
     );
 
     let prevCtxTarget = uiStore.getState().ctxInspectorAgentId;
+    let prevDismissedAlertKey = uiStore.getState().dismissedHealthAlertKey;
 
     const unsubView = uiStore.subscribe(
       (st) => ({
         activeView: getVisibleMonitorView(st),
         ctxInspectorAgentId: st.ctxInspectorAgentId,
+        dismissedHealthAlertKey: st.dismissedHealthAlertKey,
       }),
       (slice) => {
-        const scopeChanged = slice.ctxInspectorAgentId !== prevCtxTarget;
+        const scopeChanged =
+          slice.ctxInspectorAgentId !== prevCtxTarget ||
+          slice.dismissedHealthAlertKey !== prevDismissedAlertKey;
         prevCtxTarget = slice.ctxInspectorAgentId;
+        prevDismissedAlertKey = slice.dismissedHealthAlertKey;
 
         if (slice.activeView !== 'overview') {
           widgetHost.pauseTickers();
@@ -21693,6 +23277,14 @@ const LiveOverviewView = defineComponent({
     );
 
     onCleanup(() => {
+      if (primaryCopyTimer.id) {
+        clearTimeout(primaryCopyTimer.id);
+        primaryCopyTimer.id = null;
+      }
+      if (secondaryCopyTimer.id) {
+        clearTimeout(secondaryCopyTimer.id);
+        secondaryCopyTimer.id = null;
+      }
       stopCountdownTicker();
       unsubTelemetry();
       unsubView();
@@ -21703,7 +23295,7 @@ const LiveOverviewView = defineComponent({
 
     return {
       el: viewScrollbar.el,
-      refs: { viewScrollbar, widgetHost },
+      refs: { viewScrollbar, widgetHost, healthAlertPanel },
     };
   },
 });
@@ -23366,6 +24958,7 @@ const StepsDetailView = defineComponent({
       syncTableHeaderColumns,
       renderStepTable,
       refreshViewport: refreshStepTableViewport,
+      scrollToStep,
     } = stepTableWidget.refs;
     stepsScroll = CustomScrollbar({
       contentEl: stepsTablePane,
@@ -23863,9 +25456,12 @@ const StepsDetailView = defineComponent({
       const tableSteps = onlyAnomalies
         ? modelFilteredSteps.filter((st) => {
             const a = st?.anomaly;
-            if (!a || !(Number(a.count) > 0)) return false;
+            const hasHealthWarn =
+              st?.stepHealthLevel === 'warn' || st?.stepHealthLevel === 'critical';
+            const hasRawAnomaly = Boolean(a && Number(a.count) > 0);
+            if (!hasRawAnomaly && !hasHealthWarn) return false;
             if (anomalyKindFilter) {
-              return Number(a.kinds?.[anomalyKindFilter] || 0) > 0;
+              return hasRawAnomaly && Number(a.kinds?.[anomalyKindFilter] || 0) > 0;
             }
             return true;
           })
@@ -24488,10 +26084,37 @@ const StepsDetailView = defineComponent({
     let prevScope = uiStore.getState().selectedAgentScope;
     let prevActiveView = getVisibleMonitorView();
 
+    function consumePendingStepJump() {
+      const target = uiStore.getState().highlightedStepTarget;
+      if (!target || getVisibleMonitorView() !== 'steps') return;
+      if (uiStore.getState().stepsSubTab !== 'steps') {
+        uiStore.setState({ stepsSubTab: 'steps' });
+      }
+      if (onlyAnomalies || selectedTableModels[0] !== '__all__') {
+        onlyAnomalies = false;
+        anomalyKindFilter = '';
+        selectedTableModels = ['__all__'];
+        if (latestSlice) renderStepsData(latestSlice);
+      }
+      uiStore.setState({ highlightedStepTarget: null });
+      const runJump = () => {
+        scrollToStep(target.stepIndex, target.agentId || '');
+        stepsScroll.refresh();
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(runJump);
+      } else {
+        runJump();
+      }
+    }
+
     const unsubView = uiStore.subscribe(
       (st) => ({
         activeView: getVisibleMonitorView(st),
         selectedAgentScope: st.selectedAgentScope,
+        jumpKey: st.highlightedStepTarget
+          ? `${st.highlightedStepTarget.stepIndex}:${st.highlightedStepTarget.ts || 0}`
+          : '',
       }),
       (uiSlice) => {
         const scopeChanged = uiSlice.selectedAgentScope !== prevScope;
@@ -24512,6 +26135,9 @@ const StepsDetailView = defineComponent({
         if ((isDirty || scopeChanged || viewEntered) && latestSlice) {
           isDirty = false;
           renderStepsData(latestSlice);
+        }
+        if (uiSlice.jumpKey) {
+          consumePendingStepJump();
         }
       }
     );
@@ -24593,6 +26219,7 @@ function getSettingsSubTabOptions() {
     { value: 'structure', label: t('settings.subTab.structure') },
     ...(SHOW_ACCOUNT_TAB ? [{ value: 'account', label: t('settings.subTab.account') }] : []),
     { value: 'other', label: t('settings.subTab.other') },
+    { value: 'detector', label: t('settings.subTab.detector') },
   ];
 }
 
@@ -24623,12 +26250,15 @@ const SettingsView = defineComponent({
     const structureTab = SettingsStructureTab({ onLayoutChange: refreshScroll });
     const accountTab = null; // SettingsAccountTab kept in src/views/settings/ for future opt-in
     const otherTab = SettingsOtherTab({ onLayoutChange: refreshScroll });
+    const detectorTab = SettingsDetectorTab({ onLayoutChange: refreshScroll });
 
     let showingAccount = false;
+    let showingDetector = false;
     function applyActiveSubTab(subTab, activeView) {
       const target =
         subTab === 'structure' ||
         subTab === 'other' ||
+        subTab === 'detector' ||
         (accountTab && subTab === 'account')
           ? subTab
           : 'general';
@@ -24637,6 +26267,14 @@ const SettingsView = defineComponent({
       patchAttr(structureTab.el, 'hidden', target !== 'structure');
       patchAttr(structureTab.refs.thirdNavBar, 'hidden', target !== 'structure');
       patchAttr(otherTab.el, 'hidden', target !== 'other');
+      patchAttr(detectorTab.el, 'hidden', target !== 'detector');
+      const nextShowingDetector = target === 'detector' && activeView === 'settings';
+      if (nextShowingDetector && !showingDetector) {
+        detectorTab.refs.activate();
+      } else if (!nextShowingDetector && showingDetector) {
+        detectorTab.refs.deactivate();
+      }
+      showingDetector = nextShowingDetector;
       if (accountTab) {
         patchAttr(accountTab.el, 'hidden', target !== 'account');
         const nextShowingAccount = target === 'account' && activeView === 'settings';
@@ -24650,8 +26288,8 @@ const SettingsView = defineComponent({
       'div',
       {},
       accountTab
-        ? [generalTab.el, structureTab.el, accountTab.el, otherTab.el]
-        : [generalTab.el, structureTab.el, otherTab.el]
+        ? [generalTab.el, structureTab.el, accountTab.el, otherTab.el, detectorTab.el]
+        : [generalTab.el, structureTab.el, otherTab.el, detectorTab.el]
     );
     viewScrollbar = CustomScrollbar({
       contentEl: contentContainer,
@@ -24689,6 +26327,8 @@ const SettingsView = defineComponent({
             telemetry?.hostPlatform
           );
         }
+      } else if (settingsSubTab === 'detector') {
+        // Detector tab fetches its own live snapshot on activation
       } else if (accountTab && settingsSubTab === 'account') {
         accountTab.refs.renderAccount(telemetry?.account, telemetry?.quotas);
       } else {
@@ -24733,6 +26373,7 @@ const SettingsView = defineComponent({
         structureTab.refs.refreshLabels();
         accountTab?.refs.refreshLabels();
         otherTab.refs.refreshLabels();
+        detectorTab.refs.refreshLabels();
         refreshScroll();
       }
     );
@@ -24746,6 +26387,7 @@ const SettingsView = defineComponent({
       structureTab.destroy();
       accountTab?.destroy();
       otherTab.destroy();
+      detectorTab.destroy();
       viewScrollbar.destroy();
     });
 
@@ -24757,6 +26399,7 @@ const SettingsView = defineComponent({
         structureTab,
         accountTab,
         otherTab,
+        detectorTab,
         viewScrollbar,
         // Convenience aliases for external callers / tests
         windowMountSelect: structureTab.refs.windowMountSelect,

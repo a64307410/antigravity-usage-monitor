@@ -6,10 +6,17 @@
  * 2. Antigravity IDE / 2.0 后台守护桥接进程 (`mcp-entry.mjs` -> `bridge-daemon.mjs`)。
  */
 
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { BRIDGE_API_ROUTE_DEFS, LOCAL_ENDPOINT_ID } from '../shared/window-bridge-protocol.mjs';
 import { handleAccountCredentialAction } from './account-switch.mjs';
+import {
+  cancelAntigravityModelDetection,
+  getModelDetectorStatus,
+  startAntigravityModelDetection,
+  syncDetectorBank,
+} from './model-detector.mjs';
 import {
   clearRemoteEndpointCaches,
   resolveEndpointContext,
@@ -86,7 +93,12 @@ function projectDisplayStep(st) {
   const {
     stepIndex, createdAtMs, isCompactionStep, modelKey, modelShort, modelLabel,
     modelUpstream, responseModel, modelSource, tokPerSec, ttftSec, totalDurationSec,
-    streamDurationSec, selectedSpeedReason, anomaly, anomalySig, contextTokens, inputTokens, cacheReadTokens,
+    streamDurationSec, selectedSpeedReason, anomaly, anomalySig,
+    stepHealthLevel, stepHealthBadge, stepHealthDetail,
+    isColdCacheBilling, cacheNote, cacheZeroReason, infraNote,
+    turnHealthScore, turnHealthLevel, turnHealthStateLabel,
+    rootTurnHealthScore, rootTurnHealthLevel, rootTurnHealthStateLabel,
+    contextTokens, inputTokens, cacheReadTokens,
     outputTokens, thinkingTokens, responseTokens, cacheHitPct, costUsd, inCostUsd,
     cacheCostUsd, outCostUsd, agentId, agentCascadeId, agentKind, agentOrdinal,
     agentCustomRole, agentLabel, agentBadge, agentRole, agentIndex, isSubagent,
@@ -100,6 +112,12 @@ function projectDisplayStep(st) {
     modelUpstream, responseModel, modelSource, tokPerSec, ttftSec, totalDurationSec,
     streamDurationSec, selectedSpeedReason,
     ...(anomaly ? { anomaly, anomalySig } : {}),
+    stepHealthLevel, stepHealthBadge, stepHealthDetail,
+    ...(isColdCacheBilling ? { isColdCacheBilling, cacheNote } : {}),
+    ...(cacheZeroReason ? { cacheZeroReason } : {}),
+    ...(infraNote ? { infraNote } : {}),
+    turnHealthScore, turnHealthLevel, turnHealthStateLabel,
+    rootTurnHealthScore, rootTurnHealthLevel, rootTurnHealthStateLabel,
     contextTokens, inputTokens, cacheReadTokens,
     outputTokens, thinkingTokens, responseTokens, cacheHitPct, costUsd, inCostUsd,
     cacheCostUsd, outCostUsd, agentId, agentCascadeId, agentKind, agentOrdinal,
@@ -113,9 +131,9 @@ function projectDisplayStep(st) {
 
 const MAX_DISPLAY_STEP_CACHE_ENTRIES = 16;
 const displayStepsCache = new Map();
-const displayStepFields = Object.keys(projectDisplayStep({ anomaly: true, anomalySig: '' })).filter(
-  (k) => k !== 'anomaly'
-);
+const displayStepFields = Object.keys(
+  projectDisplayStep({ anomaly: true, anomalySig: '', isColdCacheBilling: true, cacheNote: '', infraNote: '1' })
+).filter((k) => k !== 'anomaly');
 
 function buildEndpointErrorResponse(epCtx) {
   return {
@@ -632,6 +650,120 @@ export async function executeBridgeRelaunchAction() {
   };
 }
 
+function writeSystemClipboard(text) {
+  return new Promise((resolve) => {
+    if (typeof execFile !== 'function') {
+      resolve(false);
+      return;
+    }
+    let settled = false;
+    const done = (ok) => {
+      if (!settled) {
+        settled = true;
+        resolve(Boolean(ok));
+      }
+    };
+    try {
+      let cmd = '';
+      let args = [];
+      let opts = { timeout: 4000 };
+      let buf = null;
+      if (process.platform === 'win32') {
+        cmd = 'clip';
+        opts = { windowsHide: true, timeout: 4000 };
+        buf = Buffer.from(`\ufeff${text}`, 'utf16le');
+      } else if (process.platform === 'darwin') {
+        cmd = 'pbcopy';
+        buf = Buffer.from(text, 'utf8');
+      } else {
+        cmd = 'xclip';
+        args = ['-selection', 'clipboard'];
+        buf = Buffer.from(text, 'utf8');
+      }
+      const child = execFile(cmd, args, opts, (err) => done(!err));
+      child?.on?.('error', () => done(false));
+      child?.stdin?.on?.('error', () => {});
+      child?.stdin?.end?.(buf);
+    } catch {
+      done(false);
+    }
+  });
+}
+
+export async function executeClipboardAction(data) {
+  const text = typeof data?.text === 'string' ? data.text : '';
+  if (!text || text.length > 32768) {
+    return {
+      status: 400,
+      contentType: 'application/json',
+      headers: { 'Cache-Control': 'no-store' },
+      body: JSON.stringify({ ok: false, error: 'Invalid clipboard text' }),
+    };
+  }
+  const ok = await writeSystemClipboard(text);
+  return {
+    status: ok ? 200 : 500,
+    contentType: 'application/json',
+    headers: { 'Cache-Control': 'no-store' },
+    body: JSON.stringify({ ok }),
+  };
+}
+
+export async function executeModelDetectorStatusAction(data) {
+  const statusPayload = await getModelDetectorStatus(data);
+  return {
+    status: 200,
+    contentType: 'application/json',
+    headers: { 'Cache-Control': 'no-store' },
+    body: JSON.stringify(statusPayload),
+  };
+}
+
+export async function executeModelDetectorStartAction(data) {
+  const result = await startAntigravityModelDetection(data);
+  return {
+    status: result.ok ? 200 : Number(result.statusHttp || 400),
+    contentType: 'application/json',
+    headers: { 'Cache-Control': 'no-store' },
+    body: JSON.stringify(result),
+  };
+}
+
+export async function executeModelDetectorCancelAction(data) {
+  const result = await cancelAntigravityModelDetection(data);
+  return {
+    status: 200,
+    contentType: 'application/json',
+    headers: { 'Cache-Control': 'no-store' },
+    body: JSON.stringify(result),
+  };
+}
+
+export async function executeModelDetectorSyncAction(data) {
+  const [bankSync] = await Promise.all([
+    syncDetectorBank({ force: true }),
+    syncCloudCatalog({ force: true }).catch(() => null),
+  ]);
+  clearTelemetryBuilderMemo();
+  const statusPayload = await getModelDetectorStatus({
+    ...data,
+    force: true,
+  });
+  return {
+    status: 200,
+    contentType: 'application/json',
+    headers: { 'Cache-Control': 'no-store' },
+    body: JSON.stringify({
+      ...statusPayload,
+      syncResult: {
+        updated: Boolean(bankSync?.updated),
+        upToDate: Boolean(bankSync?.upToDate),
+        error: bankSync?.error || '',
+      },
+    }),
+  };
+}
+
 const BRIDGE_ROUTE_LOOKUP = new Map(
   BRIDGE_API_ROUTE_DEFS.map((r) => [`${r.method}:${r.path}`, r.action])
 );
@@ -662,6 +794,16 @@ export async function dispatchBridgeApiRequest(pathname, method, data, opts = un
       return executePluginUpdateAction();
     case 'bridge_relaunch':
       return executeBridgeRelaunchAction();
+    case 'clipboard':
+      return executeClipboardAction(data);
+    case 'model_detector_status':
+      return executeModelDetectorStatusAction(data);
+    case 'model_detector_start':
+      return executeModelDetectorStartAction(data);
+    case 'model_detector_cancel':
+      return executeModelDetectorCancelAction(data);
+    case 'model_detector_sync':
+      return executeModelDetectorSyncAction(data);
     default:
       return {
         status: 404,
@@ -690,11 +832,13 @@ export function bootWindowBridgeRuntime({ allowDynamicLs = false, onRestart = nu
 
   if (lsRuntimeEndpoint.baseUrl) {
     syncCloudCatalog({ force: false }).catch(() => {});
+    syncDetectorBank({ force: false }).catch(() => {});
   } else {
     ensureLsEndpointDiscovered({ force: false })
       .then((ok) => {
         if (ok) {
           syncCloudCatalog({ force: false }).catch(() => {});
+          syncDetectorBank({ force: false }).catch(() => {});
         }
       })
       .catch(() => {});

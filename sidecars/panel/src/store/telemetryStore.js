@@ -664,6 +664,16 @@ export function isEquivalentTelemetry(prev, next) {
   ) {
     return false;
   }
+  if (
+    pAct?.inferenceHealth?.sessionLevel !== nAct?.inferenceHealth?.sessionLevel ||
+    pAct?.inferenceHealth?.activeAlert?.alertKey !== nAct?.inferenceHealth?.activeAlert?.alertKey ||
+    pAct?.aggregated?.inferenceHealth?.sessionLevel !==
+      nAct?.aggregated?.inferenceHealth?.sessionLevel ||
+    pAct?.aggregated?.inferenceHealth?.activeAlert?.alertKey !==
+      nAct?.aggregated?.inferenceHealth?.activeAlert?.alertKey
+  ) {
+    return false;
+  }
 
   const pAgents = pAct?.agents || [];
   const nAgents = nAct?.agents || [];
@@ -1990,6 +2000,144 @@ export {
   formatLiveActivityLabel,
   getAgentBadgeClass,
 };
+
+export const CURRENT_WINDOW_MODEL_VALUE = '__current__';
+
+function normalizeHostButtonModelText(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/[⌃⌄▾▴∨∧^<>›‹+\s]+/g, ' ')
+    .trim();
+}
+
+function resolveActiveDetectorConversationId() {
+  const st = telemetryStore.getState();
+  return (
+    extractHostRouteCascadeId() ||
+    st.selectedConversationId ||
+    st.telemetry?.activeConversation?.cascadeId ||
+    ''
+  );
+}
+
+export function extractHostComposerModelHint(knownModels = []) {
+  if (typeof document === 'undefined' || !isWindowOverlayMode()) return '';
+  if (typeof document.querySelectorAll !== 'function') return '';
+  const knownNormSet = new Set(
+    (Array.isArray(knownModels) ? knownModels : [])
+      .map((m) => normalizeHostButtonModelText(m?.label || m?.modelId || ''))
+      .filter(Boolean)
+  );
+
+  let buttons;
+  try {
+    buttons = document.querySelectorAll('button, [role="button"]');
+  } catch {
+    return '';
+  }
+
+  const candidates = [];
+  for (const btn of buttons) {
+    if (!btn || typeof btn.closest !== 'function') continue;
+    if (
+      btn.closest('#ag-usage-monitor-capsule') ||
+      btn.closest('#ag-usage-monitor-portal') ||
+      btn.closest('[role="menu"]') ||
+      btn.closest('[role="listbox"]')
+    ) {
+      continue;
+    }
+    const role = String(btn.getAttribute?.('role') || '');
+    if (role === 'menuitem' || role === 'menuitemradio' || role === 'option') continue;
+
+    const rawText = String(btn.textContent || '').replace(/\s+/g, ' ').trim();
+    if (rawText.length < 4 || rawText.length > 60) continue;
+
+    const norm = normalizeHostButtonModelText(rawText);
+    if (!norm) continue;
+    const isKnown = knownNormSet.size > 0 && knownNormSet.has(norm);
+    const looksLikeAgModel =
+      /^(?:gemini\s+\d|claude\s+(?:opus|sonnet|haiku)|orchestrator\b|gpt[- ]oss\b|neon\b|argon\b|carbon\b)/i.test(
+        norm
+      );
+    if (!isKnown && !looksLikeAgModel) continue;
+
+    let topY = 0;
+    if (typeof btn.getBoundingClientRect === 'function') {
+      const rect = btn.getBoundingClientRect();
+      if (rect.width <= 0 && rect.height <= 0) continue;
+      topY = rect.top;
+    }
+    const hasPopup = Boolean(btn.getAttribute?.('aria-haspopup'));
+    candidates.push({ rawText, isKnown, hasPopup, topY });
+  }
+
+  if (!candidates.length) return '';
+  candidates.sort((a, b) => {
+    if (a.isKnown !== b.isKnown) return a.isKnown ? -1 : 1;
+    if (a.hasPopup !== b.hasPopup) return a.hasPopup ? -1 : 1;
+    return b.topY - a.topY;
+  });
+  return candidates[0].rawText;
+}
+
+export async function fetchModelDetectorStatus({ force = false, knownModels = [] } = {}) {
+  const params = new URLSearchParams();
+  const convId = resolveActiveDetectorConversationId();
+  const hint = extractHostComposerModelHint(knownModels);
+  if (convId) params.set('conversationId', convId);
+  if (hint) params.set('composerModelHint', hint);
+  if (force) params.set('force', '1');
+  const qs = params.toString();
+  return callSidecarApi(`/api/model-detector/status${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    abortKey: force ? 'model-detector-force' : 'model-detector-poll',
+  });
+}
+
+export async function triggerModelDetection({
+  modelId = CURRENT_WINDOW_MODEL_VALUE,
+  probeMode = 'fast',
+  knownModels = [],
+} = {}) {
+  const convId = resolveActiveDetectorConversationId();
+  const hint = extractHostComposerModelHint(knownModels);
+  return callSidecarApi('/api/model-detector/detect', {
+    method: 'POST',
+    body: {
+      modelId: modelId || CURRENT_WINDOW_MODEL_VALUE,
+      probeMode: probeMode === 'exact' ? 'exact' : 'fast',
+      conversationId: convId,
+      composerModelHint: hint,
+    },
+  });
+}
+
+export async function cancelModelDetection({ knownModels = [] } = {}) {
+  const convId = resolveActiveDetectorConversationId();
+  const hint = extractHostComposerModelHint(knownModels);
+  return callSidecarApi('/api/model-detector/cancel', {
+    method: 'POST',
+    body: {
+      conversationId: convId,
+      composerModelHint: hint,
+    },
+  });
+}
+
+export async function syncModelDetector({ knownModels = [] } = {}) {
+  const convId = resolveActiveDetectorConversationId();
+  const hint = extractHostComposerModelHint(knownModels);
+  const res = await callSidecarApi('/api/model-detector/sync', {
+    method: 'POST',
+    body: {
+      conversationId: convId,
+      composerModelHint: hint,
+    },
+  });
+  void fetchTelemetry({ force: true });
+  return res;
+}
 
 /**
  * 在遥测快照中解析宿主当前路由会话 ID（兼容顶层主会话 ID 与子代理/蜂群工蜂 ID）。

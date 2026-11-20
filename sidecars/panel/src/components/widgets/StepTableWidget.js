@@ -16,6 +16,7 @@ import {
 import {
   buildStepAnomalyDiagnostic,
   buildStepCompactionDiagnostic,
+  buildStepHealthDiagnostic,
   resolveModelDisplayInfo,
   speedReasonText,
 } from '../../core/formatters.js';
@@ -196,7 +197,7 @@ function buildColumnSizerSpec(tableSteps, colKeys, wantedSet, cellCtx) {
     }
 
     if (modelCandidates) {
-      const mKey = `${st.baseModelShort || st.modelShort || ''}|${st.baseModelLabel || st.modelLabel || ''}|${st.rawModel || ''}|${st.isCompactionStep ? 1 : 0}`;
+      const mKey = `${st.baseModelShort || st.modelShort || ''}|${st.baseModelLabel || st.modelLabel || ''}|${st.rawModel || ''}|${st.isCompactionStep ? 1 : 0}|${st.stepHealthBadge || ''}`;
       if (!modelCandidates.has(mKey)) {
         modelCandidates.set(mKey, st);
       }
@@ -331,7 +332,11 @@ function buildColumnSizerSpec(tableSteps, colKeys, wantedSet, cellCtx) {
     let bestModelObj = firstStep;
     for (const cand of modelCandidates.values()) {
       const disp = resolveModelDisplayInfo(cand, cellCtx?.displaySettings, { fallback: '—' });
-      const len = disp.baseText?.length || 0;
+      const badgeExtra =
+        cand.stepHealthBadge && cand.stepHealthLevel && cand.stepHealthLevel !== 'healthy'
+          ? cand.stepHealthBadge.length * 2 + 2
+          : 0;
+      const len = (disp.baseText?.length || 0) + badgeExtra;
       if (len > bestModelLen) {
         bestModelLen = len;
         bestModelObj = cand;
@@ -513,6 +518,7 @@ export const StepTableWidget = defineComponent({
       hideTurnTip();
       patchClasses(anomalyTipEl, {
         'is-danger': diag.severity === 'danger',
+        'is-notice': diag.severity === 'notice',
         'is-compaction': diag.severity === 'compaction',
       });
       patchText(anomalyTipTitleEl, diag.title);
@@ -702,6 +708,9 @@ export const StepTableWidget = defineComponent({
       }
       if (isCompactionRow) {
         return buildStepCompactionDiagnostic(st, displaySettings);
+      }
+      if (st?.stepHealthLevel && st.stepHealthLevel !== 'healthy' && st.stepHealthDetail) {
+        return buildStepHealthDiagnostic(st);
       }
       return null;
     }
@@ -1018,8 +1027,9 @@ export const StepTableWidget = defineComponent({
             : '';
           const stripeSig = isVirtualized ? (item.isStripeEven ? 'E' : 'O') : 'N';
           const anomalySig = st.anomalySig || '';
+          const healthSig = `${st.stepHealthLevel || ''}:${st.stepHealthBadge || ''}:${st.turnHealthLevel || ''}:${st.rootTurnHealthLevel || ''}`;
           const compactSig = isCompactionStepItem(st) ? 'C' : '';
-          return `${locale}:${colOrderSig}:${stripeSig}:${badgeSig}:${anomalySig}:${compactSig}:${railActive}:${item.hasTurn}:${item.hasUp}:${item.hasDown}:${item.isStart}:${item.isLatest}:${item.prompt}:${parts}`;
+          return `${locale}:${colOrderSig}:${stripeSig}:${badgeSig}:${anomalySig}:${healthSig}:${compactSig}:${railActive}:${item.hasTurn}:${item.hasUp}:${item.hasDown}:${item.isStart}:${item.isLatest}:${item.prompt}:${parts}`;
         },
         createRow: (item) => {
           if (item.isSizer) {
@@ -1262,13 +1272,26 @@ export const StepTableWidget = defineComponent({
           }
 
           const hasStepAnomaly = Boolean(st?.anomaly && Number(st.anomaly.count) > 0);
-          const isAnomalyDanger = Boolean(hasStepAnomaly && st.anomaly.severity === 'danger');
-          const isAnomalyWarn = Boolean(hasStepAnomaly && !isAnomalyDanger);
+          const hasStepHealthDiag = Boolean(
+            st?.stepHealthLevel && st.stepHealthLevel !== 'healthy' && st.stepHealthDetail
+          );
+          const isHealthCritical = st?.stepHealthLevel === 'critical';
+          const isHealthWarn = st?.stepHealthLevel === 'warn';
+          const isAnomalyDanger = Boolean(
+            (hasStepAnomaly && st.anomaly.severity === 'danger') || isHealthCritical
+          );
+          const isAnomalyWarn = Boolean(
+            !isAnomalyDanger && (hasStepAnomaly || isHealthWarn)
+          );
           const isCompactionRow = isCompactionStepItem(st);
-          const hasRowTip = hasStepAnomaly || isCompactionRow;
+          const hasRowTip = hasStepAnomaly || isCompactionRow || hasStepHealthDiag;
           const rowDiagGetter = hasRowTip
             ? () => buildStepRowDiagnostic(st, cellCtx.displaySettings, hasStepAnomaly, isCompactionRow)
             : null;
+          if (tr.dataset) {
+            tr.dataset.stepIndex = String(st.stepIndex ?? '');
+            tr.dataset.agentId = String(st.agentId || 'main');
+          }
           patchClasses(tr, {
             'is-compaction': isCompactionRow,
             'is-anomaly-warn': isAnomalyWarn,
@@ -1288,10 +1311,15 @@ export const StepTableWidget = defineComponent({
           patchAttr(refs.railEl, 'hidden', !showRowRail);
           if (showRowRail) {
             const marker = isStart ? ' is-origin' : !hasUp && hasDown ? ' is-cap' : '';
+            const turnLvl = activeDataset?.useRootTurn
+              ? st.rootTurnHealthLevel
+              : st.turnHealthLevel;
+            const healthCls =
+              turnLvl === 'critical' ? ' is-critical' : turnLvl === 'warn' ? ' is-warn' : '';
             patchAttr(
               refs.railEl,
               'class',
-              `turn-rail${isLatest ? ' is-latest' : ''}${hasUp ? ' has-up' : ''}${hasDown ? ' has-down' : ''}${marker}`
+              `turn-rail${isLatest ? ' is-latest' : ''}${hasUp ? ' has-up' : ''}${hasDown ? ' has-down' : ''}${marker}${healthCls}`
             );
           }
 
@@ -1587,7 +1615,73 @@ export const StepTableWidget = defineComponent({
       lastRenderedRows = tableSteps;
     }
 
+    let flashTimerId = 0;
+    let flashedRowEl = null;
+
+    function clearFlashState() {
+      if (flashTimerId) {
+        clearTimeout(flashTimerId);
+        flashTimerId = 0;
+      }
+      if (flashedRowEl) {
+        patchClasses(flashedRowEl, { 'is-step-flash': false });
+        flashedRowEl = null;
+      }
+    }
+
+    function scrollToStep(targetStepIndex, targetAgentId = '') {
+      if (!activeDataset || !Array.isArray(activeDataset.tableSteps)) return false;
+      const numStep = Number(targetStepIndex);
+      if (!Number.isFinite(numStep)) return false;
+      const stepsArr = activeDataset.tableSteps;
+      let targetIdx = -1;
+      if (targetAgentId && targetAgentId !== 'all') {
+        targetIdx = stepsArr.findIndex(
+          (s) => Number(s?.stepIndex) === numStep && String(s?.agentId || 'main') === targetAgentId
+        );
+      }
+      if (targetIdx < 0) {
+        targetIdx = stepsArr.findIndex((s) => Number(s?.stepIndex) === numStep);
+      }
+      if (targetIdx < 0) return false;
+
+      if (activeDataset.isVirtualized && activeDataset.rowTops) {
+        const rowTop = activeDataset.rowTops[targetIdx] || 0;
+        const paneH = Math.max(0, Number(stepsTablePane.clientHeight || 0));
+        stepsTablePane.scrollTop = Math.max(0, Math.round(rowTop - paneH * 0.32));
+        renderCurrentWindow({ force: true });
+      }
+
+      const wantAgent = targetAgentId && targetAgentId !== 'all' ? targetAgentId : '';
+      let foundTr = null;
+      const children = stepsTbody.children || [];
+      for (let i = 0; i < children.length; i++) {
+        const tr = children[i];
+        if (!tr?.dataset) continue;
+        if (Number(tr.dataset.stepIndex) !== numStep) continue;
+        if (wantAgent && tr.dataset.agentId && tr.dataset.agentId !== wantAgent) continue;
+        foundTr = tr;
+        break;
+      }
+      if (!foundTr) return false;
+      if (!activeDataset.isVirtualized && typeof foundTr.scrollIntoView === 'function') {
+        foundTr.scrollIntoView({ block: 'center', behavior: 'instant' });
+      }
+      clearFlashState();
+      flashedRowEl = foundTr;
+      patchClasses(foundTr, { 'is-step-flash': true });
+      flashTimerId = setTimeout(() => {
+        flashTimerId = 0;
+        if (flashedRowEl === foundTr) {
+          patchClasses(foundTr, { 'is-step-flash': false });
+          flashedRowEl = null;
+        }
+      }, 2200);
+      return true;
+    }
+
     onCleanup(() => {
+      clearFlashState();
       stepsTablePane.removeEventListener('scroll', onPaneScroll);
       stepsTbody.removeEventListener('mouseleave', onTbodyLeave);
       if (scrollRafId && typeof cancelAnimationFrame === 'function') {
@@ -1618,6 +1712,7 @@ export const StepTableWidget = defineComponent({
         syncTableHeaderColumns,
         renderStepTable,
         refreshViewport,
+        scrollToStep,
         hideTurnTip,
         showAnomalyTip,
         hideAnomalyTip,

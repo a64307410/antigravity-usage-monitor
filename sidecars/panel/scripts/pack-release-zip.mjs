@@ -24,6 +24,7 @@ const ROOT_WHITELIST = Object.freeze([
   'pricing-catalog.json',
   'LICENSE',
   'assets/logo.svg',
+  'agents/model-detector-probe.md',
 ]);
 
 const PANEL_TOP_WHITELIST = Object.freeze([
@@ -37,6 +38,7 @@ const PANEL_TOP_WHITELIST = Object.freeze([
   'sidecars/panel/standalone.mjs',
   'sidecars/panel/cli-statusline.mjs',
   'sidecars/panel/trajectory-metrics.mjs',
+  'sidecars/panel/vendor/seed-bank.zip',
 ]);
 
 const RUNTIME_SUBDIRS = Object.freeze([

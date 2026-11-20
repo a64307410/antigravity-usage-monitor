@@ -225,7 +225,11 @@ for (const route of BRIDGE_API_ROUTE_DEFS) {
       handleProtectedApi(
         route.path,
         route.method,
-        route.method === 'GET' && route.action !== 'telemetry' ? undefined : data,
+        route.method === 'GET' &&
+        route.action !== 'telemetry' &&
+        route.action !== 'model_detector_status'
+          ? undefined
+          : data,
         req
       ),
     route.method

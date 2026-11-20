@@ -559,6 +559,7 @@ export function buildBundle(panelDir = PANEL_DIR) {
     'src/views/settings/SettingsGeneralTab.js',
     'src/views/settings/SettingsStructureTab.js',
     'src/views/settings/SettingsOtherTab.js',
+    'src/views/settings/SettingsDetectorTab.js',
     'src/components/layout/TopSessionHeader.js',
     'src/views/LiveOverviewView.js',
     'src/views/ConsumptionView.js',

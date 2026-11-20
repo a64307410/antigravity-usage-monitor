@@ -89,6 +89,13 @@ export const SVG_ICON_DEFS = Object.freeze({
   close: [
     { tag: 'path', attrs: { d: 'M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6' } },
   ],
+  fingerprint: [
+    { tag: 'path', attrs: { d: 'M4.2 5.2a4.6 4.6 0 0 1 7.6 0' } },
+    { tag: 'path', attrs: { d: 'M3 8.2c0-2.8 2.2-5 5-5s5 2.2 5 5c0 1.7-.4 3.3-1.1 4.6' } },
+    { tag: 'path', attrs: { d: 'M5.5 8.3a2.5 2.5 0 0 1 5 0c0 1.8-.5 3.5-1.4 5' } },
+    { tag: 'path', attrs: { d: 'M8 8.2c0 1.9-.6 3.7-1.7 5.1' } },
+    { tag: 'path', attrs: { d: 'M3.6 10.8c-.3.8-.6 1.5-1 2.2' } },
+  ],
   copy: [
     { tag: 'rect', attrs: { x: '5.2', y: '5.2', width: '8.3', height: '8.3', rx: '1.3' } },
     { tag: 'path', attrs: { d: 'M3.5 10.8H2.8a1.3 1.3 0 0 1-1.3-1.3V3.3A1.3 1.3 0 0 1 2.8 2h6.2a1.3 1.3 0 0 1 1.3 1.3v.7' } },

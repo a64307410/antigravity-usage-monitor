@@ -18,10 +18,13 @@ export const uiStore = createReactiveStore({
   activeView: 'overview',
   monitorVisible: true,
   stepsSubTab: 'steps', // 'steps' | 'models'
-  settingsSubTab: 'general', // 'general' | 'structure' | 'account' | 'other'
+  settingsSubTab: 'general', // 'general' | 'structure' | 'account' | 'other' | 'detector'
   settingsStructureTab: 'mount', // 'mount' | 'hover' | 'overview' | 'steps'
   selectedAgentScope: 'all', // 'all' | 'main' | <subagent cascadeId>
   ctxInspectorAgentId: 'auto', // 'auto' | 'main' | <subagent cascadeId>
+  detectorProbeMode: 'fast', // 'fast' | 'exact'
+  dismissedHealthAlertKey: '',
+  highlightedStepTarget: null,
 });
 
 export function getVisibleMonitorView(state = uiStore.getState()) {

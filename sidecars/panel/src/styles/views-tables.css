@@ -121,18 +121,65 @@
 
 .step-model-cell {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
+  gap: 4px;
   max-width: calc(var(--step-model-max-w, 176px) * var(--ui-font-scale, 1));
   min-width: 0;
   vertical-align: bottom;
 }
 
 .step-model-name {
+  display: inline-flex;
+  align-items: baseline;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.model-name-head {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
   flex: 0 1 auto;
+}
+
+.model-name-tail {
+  white-space: nowrap;
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.step-health-tag {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 4px;
+  height: calc(15px * var(--ui-font-scale, 1));
+  border-radius: var(--radius-xs);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  color: var(--metric-warn);
+  background: var(--metric-warn-soft);
+  white-space: nowrap;
+}
+
+.step-health-tag.is-critical {
+  color: var(--metric-danger);
+  background: color-mix(in srgb, var(--metric-danger) 12%, transparent);
+}
+
+.step-health-tag.is-notice {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-secondary) 10%, transparent);
+  font-weight: 500;
+}
+
+.step-health-tag[hidden] {
+  display: none !important;
 }
 
 .steps-panel-header {
@@ -224,6 +271,16 @@
 .turn-rail.is-latest {
   --rail-line: color-mix(in srgb, var(--accent-primary) 62%, var(--surface-panel));
   --rail-dot: var(--accent-primary);
+}
+
+.turn-rail.is-warn {
+  --rail-line: color-mix(in srgb, var(--metric-warn) 68%, var(--surface-panel));
+  --rail-dot: var(--metric-warn);
+}
+
+.turn-rail.is-critical {
+  --rail-line: color-mix(in srgb, var(--metric-danger) 74%, var(--surface-panel));
+  --rail-dot: var(--metric-danger);
 }
 
 .steps-data-table tbody tr:hover .turn-rail {
@@ -436,6 +493,10 @@
   border-color: color-mix(in srgb, var(--metric-danger) 46%, var(--border-strong));
 }
 
+.step-anomaly-tip.is-notice {
+  border-color: color-mix(in srgb, var(--border-strong) 85%, var(--accent-primary));
+}
+
 .step-anomaly-tip.is-compaction {
   border-color: color-mix(in srgb, var(--accent-primary) 46%, var(--border-strong));
 }
@@ -466,6 +527,15 @@
 
 .step-anomaly-tip.is-compaction .step-anomaly-tip-title {
   color: var(--accent-primary);
+}
+
+.step-anomaly-tip.is-notice .step-anomaly-tip-title {
+  color: var(--text-primary);
+}
+
+.data-table tbody tr.is-step-flash {
+  background: color-mix(in srgb, var(--accent-primary) 16%, var(--surface-panel)) !important;
+  transition: background-color var(--dur-normal) var(--ease-fast);
 }
 
 .step-anomaly-tip-sub {

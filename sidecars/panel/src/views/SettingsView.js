@@ -11,6 +11,7 @@ import { telemetryStore } from '../store/telemetryStore.js';
 import { getVisibleMonitorView, uiStore } from '../store/uiStore.js';
 import { CustomScrollbar } from '../components/ui/CustomScrollbar.js';
 import { SegmentedControl } from '../components/ui/SegmentedControl.js';
+import { SettingsDetectorTab } from './settings/SettingsDetectorTab.js';
 import { SettingsGeneralTab } from './settings/SettingsGeneralTab.js';
 import { SettingsOtherTab } from './settings/SettingsOtherTab.js';
 import { SettingsStructureTab } from './settings/SettingsStructureTab.js';
@@ -23,6 +24,7 @@ function getSettingsSubTabOptions() {
     { value: 'structure', label: t('settings.subTab.structure') },
     ...(SHOW_ACCOUNT_TAB ? [{ value: 'account', label: t('settings.subTab.account') }] : []),
     { value: 'other', label: t('settings.subTab.other') },
+    { value: 'detector', label: t('settings.subTab.detector') },
   ];
 }
 
@@ -53,12 +55,15 @@ export const SettingsView = defineComponent({
     const structureTab = SettingsStructureTab({ onLayoutChange: refreshScroll });
     const accountTab = null; // SettingsAccountTab kept in src/views/settings/ for future opt-in
     const otherTab = SettingsOtherTab({ onLayoutChange: refreshScroll });
+    const detectorTab = SettingsDetectorTab({ onLayoutChange: refreshScroll });
 
     let showingAccount = false;
+    let showingDetector = false;
     function applyActiveSubTab(subTab, activeView) {
       const target =
         subTab === 'structure' ||
         subTab === 'other' ||
+        subTab === 'detector' ||
         (accountTab && subTab === 'account')
           ? subTab
           : 'general';
@@ -67,6 +72,14 @@ export const SettingsView = defineComponent({
       patchAttr(structureTab.el, 'hidden', target !== 'structure');
       patchAttr(structureTab.refs.thirdNavBar, 'hidden', target !== 'structure');
       patchAttr(otherTab.el, 'hidden', target !== 'other');
+      patchAttr(detectorTab.el, 'hidden', target !== 'detector');
+      const nextShowingDetector = target === 'detector' && activeView === 'settings';
+      if (nextShowingDetector && !showingDetector) {
+        detectorTab.refs.activate();
+      } else if (!nextShowingDetector && showingDetector) {
+        detectorTab.refs.deactivate();
+      }
+      showingDetector = nextShowingDetector;
       if (accountTab) {
         patchAttr(accountTab.el, 'hidden', target !== 'account');
         const nextShowingAccount = target === 'account' && activeView === 'settings';
@@ -80,8 +93,8 @@ export const SettingsView = defineComponent({
       'div',
       {},
       accountTab
-        ? [generalTab.el, structureTab.el, accountTab.el, otherTab.el]
-        : [generalTab.el, structureTab.el, otherTab.el]
+        ? [generalTab.el, structureTab.el, accountTab.el, otherTab.el, detectorTab.el]
+        : [generalTab.el, structureTab.el, otherTab.el, detectorTab.el]
     );
     viewScrollbar = CustomScrollbar({
       contentEl: contentContainer,
@@ -119,6 +132,8 @@ export const SettingsView = defineComponent({
             telemetry?.hostPlatform
           );
         }
+      } else if (settingsSubTab === 'detector') {
+        // Detector tab fetches its own live snapshot on activation
       } else if (accountTab && settingsSubTab === 'account') {
         accountTab.refs.renderAccount(telemetry?.account, telemetry?.quotas);
       } else {
@@ -163,6 +178,7 @@ export const SettingsView = defineComponent({
         structureTab.refs.refreshLabels();
         accountTab?.refs.refreshLabels();
         otherTab.refs.refreshLabels();
+        detectorTab.refs.refreshLabels();
         refreshScroll();
       }
     );
@@ -176,6 +192,7 @@ export const SettingsView = defineComponent({
       structureTab.destroy();
       accountTab?.destroy();
       otherTab.destroy();
+      detectorTab.destroy();
       viewScrollbar.destroy();
     });
 
@@ -187,6 +204,7 @@ export const SettingsView = defineComponent({
         structureTab,
         accountTab,
         otherTab,
+        detectorTab,
         viewScrollbar,
         // Convenience aliases for external callers / tests
         windowMountSelect: structureTab.refs.windowMountSelect,

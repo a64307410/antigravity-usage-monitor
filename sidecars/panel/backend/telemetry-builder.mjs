@@ -31,6 +31,10 @@ import {
 } from './config.mjs';
 import { getEndpointCacheStore } from './endpoint-registry.mjs';
 import { getContextWindowGroups, getContextWindowModels } from './context-windows.mjs';
+import {
+  evaluateAgentInferenceHealth,
+  mergeAggregatedInferenceHealth,
+} from './inference-health.mjs';
 import { readLocalSummarySnapshot } from './cli-sqlite-reader.mjs';
 import { enumerateAndSyncConversations } from './local-scanner.mjs';
 import { ensureLsEndpointDiscovered } from './ls-discovery.mjs';
@@ -591,14 +595,23 @@ function sameFallbackUpstreams(prevMap, fallbackModelKeys, upstream) {
   return true;
 }
 
-function prepareAgentSteps(rawSteps, resolveStepModel, upstream, agentFields, reuseInputs) {
+function prepareAgentSteps(
+  rawSteps,
+  resolveStepModel,
+  upstream,
+  agentFields,
+  reuseInputs,
+  isRunning = false
+) {
   const facts = readTrajectoryModelFacts(rawSteps);
   for (const [key, model] of facts.upstream) upstream.set(key, model);
+  const runningFlag = Boolean(isRunning);
   const canCache = Boolean(reuseInputs && Array.isArray(rawSteps));
   if (canCache) {
     const previous = agentStepPrepCache.get(rawSteps);
     if (
       previous &&
+      previous.isRunning === runningFlag &&
       isDeepStrictEqual(previous.agentFields, agentFields) &&
       previous.catalogRevision === reuseInputs.catalogRevision &&
       previous.phaseEpoch === reuseInputs.phaseEpoch &&
@@ -610,8 +623,15 @@ function prepareAgentSteps(rawSteps, resolveStepModel, upstream, agentFields, re
   }
   const enrichedRes = enrichActiveConversationSteps(rawSteps, resolveStepModel, upstream, agentFields);
   const taggedSteps = enrichedRes.enrichedActiveSteps;
+  const healthSummary = evaluateAgentInferenceHealth(taggedSteps, {
+    agentId: agentFields.agentId || 'main',
+    agentLabel: agentFields.agentLabel || '主代理',
+    agentBadge: agentFields.agentBadge || '主',
+    isRunning: runningFlag,
+  });
   const prepared = {
     enrichedRes,
+    healthSummary,
     recentSteps: taggedSteps.slice().reverse(),
     ctxRes: extractActiveContextTelemetry(taggedSteps, enrichedRes.latestEnriched,
       enrichedRes.sessionInputTokens, enrichedRes.sessionCacheReadTokens),
@@ -620,6 +640,7 @@ function prepareAgentSteps(rawSteps, resolveStepModel, upstream, agentFields, re
   // 按 rawSteps 数组引用缓存各代理（含多代理子代理）步骤富化结果，步骤变更后由 WeakMap 自动淘汰。
   if (canCache) {
     agentStepPrepCache.set(rawSteps, {
+      isRunning: runningFlag,
       agentFields,
       catalogRevision: reuseInputs.catalogRevision,
       phaseEpoch: reuseInputs.phaseEpoch,
@@ -660,7 +681,8 @@ export function buildAgentUnitTelemetry({
   includeRecentSteps = true,
   reuseInputs = null,
 }) {
-  const { enrichedRes, ctxRes, modelBreakdown, recentSteps } = prepareAgentSteps(
+  const isRunning = status === 'CASCADE_RUN_STATUS_RUNNING';
+  const { enrichedRes, healthSummary, ctxRes, modelBreakdown, recentSteps } = prepareAgentSteps(
     rawSteps,
     resolveStepModel,
     knownUpstreamByModelKey,
@@ -677,12 +699,12 @@ export function buildAgentUnitTelemetry({
       isSubagent: !isMain,
       ...(isSideQuestion ? { isSideQuestion: true, sideIndex } : {}),
     },
-    reuseInputs
+    reuseInputs,
+    isRunning
   );
   const taggedSteps = enrichedRes.enrichedActiveSteps;
   const lastModifiedMs =
     enrichedRes.latestEnriched?.createdAtMs || fallbackLastModMs || 0;
-  const isRunning = status === 'CASCADE_RUN_STATUS_RUNNING';
   const resolvedLiveActivity = isRunning
     ? liveActivity ||
       extractLiveActivity([], true, lastModifiedMs || fallbackLastModMs || 0)
@@ -690,6 +712,7 @@ export function buildAgentUnitTelemetry({
 
   return {
     enrichedRes,
+    healthSummary,
     taggedSteps,
     recentSteps,
     ctxRes,
@@ -711,6 +734,7 @@ export function buildAgentUnitTelemetry({
       isRunning,
       status: status || 'IDLE',
       liveActivity: resolvedLiveActivity,
+      inferenceHealth: healthSummary,
       stepCount: taggedSteps.length,
       latestTokPerSec: enrichedRes.latestEnriched?.tokPerSec ?? null,
       latestTtftSec: enrichedRes.latestEnriched?.ttftSec ?? null,
@@ -1222,6 +1246,12 @@ function buildActiveConversationAssembly({
         }
       : null;
 
+    const aggregatedInferenceHealth = mergeAggregatedInferenceHealth(
+      mainUnit.healthSummary,
+      subAgentTelemetries,
+      allCombinedEnrichedSteps
+    );
+
     aggregatedTelemetry = {
       agentId: 'all',
       cascadeId: activeCascadeId,
@@ -1242,6 +1272,7 @@ function buildActiveConversationAssembly({
       isRunning: allAgents.some((a) => a.isRunning),
       status: allAgents.some((a) => a.isRunning) ? 'CASCADE_RUN_STATUS_RUNNING' : 'IDLE',
       liveActivity: aggregatedLiveActivity,
+      inferenceHealth: aggregatedInferenceHealth,
       stepCount: allCombinedEnrichedSteps.length,
       latestTokPerSec: latestMetricAgent.latestTokPerSec,
       latestTtftSec: latestMetricAgent.latestTtftSec,
@@ -1283,6 +1314,7 @@ function buildActiveConversationAssembly({
     isRunning: activeConvSummary?.status === 'CASCADE_RUN_STATUS_RUNNING',
     status: activeConvSummary?.status || 'IDLE',
     liveActivity: mainAgentTelemetry.liveActivity || null,
+    inferenceHealth: mainUnit.healthSummary,
     stepCount: enrichedActiveSteps.length,
     hasSubagents: subAgentTelemetries.length > 0,
     subagentCount: subAgentTelemetries.length,
@@ -2243,7 +2275,7 @@ function entryNeedsLazyTelemetryUpgrade(entry) {
   if (!entry || !Array.isArray(entry.steps) || entry.steps.length === 0) return false;
   return (
     !entry.turnRailTelemetry ||
-    !entry.anomalyTelemetry ||
+    (entry.anomalyTelemetry || 0) < 2 ||
     entry.contextGroupsTelemetry !== 2
   );
 }

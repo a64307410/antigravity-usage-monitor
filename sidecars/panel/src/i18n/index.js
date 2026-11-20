@@ -19,8 +19,17 @@ export function normalizeI18nLanguage(raw) {
 
 export function detectHostSystemLocale() {
   try {
-    if (typeof navigator !== 'undefined' && navigator.language) {
-      return String(navigator.language).toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US';
+    if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+      const langs =
+        Array.isArray(navigator.languages) && navigator.languages.length > 0
+          ? navigator.languages
+          : navigator.language
+            ? [navigator.language]
+            : [];
+      if (langs.some((l) => String(l).toLowerCase().startsWith('zh'))) {
+        return 'zh-CN';
+      }
+      if (langs.length > 0) return 'en-US';
     }
   } catch {
     // Ignore environment navigator read errors

@@ -5,7 +5,7 @@
  * speed reason sub-lines, token combo tooltips, and high-cost highlights.
  */
 
-import { h, patchAttr, patchText } from '../core/domPatch.js';
+import { h, patchAttr, patchClasses, patchText } from '../core/domPatch.js';
 import {
   formatCachePct,
   formatMetric,
@@ -18,6 +18,7 @@ import {
   getTtftToneClass,
   resolveModelDisplayInfo,
   speedReasonText,
+  splitModelHeadTail,
 } from '../core/formatters.js';
 import { t } from '../i18n/index.js';
 import {
@@ -160,18 +161,37 @@ export const STEP_COLUMN_REGISTRY = Object.freeze({
     optLabel: () => t('stepCol.model.opt'),
     sigPart: (st, ctx) => {
       const disp = resolveModelDisplayInfo(st, ctx.displaySettings, { fallback: '—' });
-      return `${disp.baseText}:${disp.title}`;
+      return `${disp.baseText}:${disp.title}:${st.stepHealthLevel || ''}:${st.stepHealthBadge || ''}`;
     },
     createCell: () => {
-      const nameEl = h('span', { className: 'step-model-name' });
-      const wrapEl = h('span', { className: 'step-model-cell' }, [nameEl]);
+      const headEl = h('span', { className: 'model-name-head' });
+      const tailEl = h('span', { className: 'model-name-tail' });
+      const nameEl = h('span', { className: 'step-model-name' }, [headEl, tailEl]);
+      const healthTagEl = h('span', { className: 'step-health-tag', hidden: true });
+      const wrapEl = h('span', { className: 'step-model-cell' }, [nameEl, healthTagEl]);
       const td = h('td', {}, [wrapEl]);
-      return { td, refs: { td, wrapEl, nameEl } };
+      return { td, refs: { td, wrapEl, nameEl, headEl, tailEl, healthTagEl } };
     },
     updateCell: (refs, st, ctx) => {
       const modelDisplay = resolveModelDisplayInfo(st, ctx.displaySettings, { fallback: '—' });
-      patchText(refs.nameEl, modelDisplay.baseText);
-      patchAttr(refs.td, 'title', modelDisplay.title);
+      const { head, tail } = splitModelHeadTail(modelDisplay.baseText);
+      patchText(refs.headEl, head);
+      patchText(refs.tailEl, tail);
+      const showHealthTag = Boolean(
+        st.stepHealthBadge && st.stepHealthLevel && st.stepHealthLevel !== 'healthy'
+      );
+      patchAttr(refs.healthTagEl, 'hidden', !showHealthTag);
+      if (showHealthTag) {
+        patchText(refs.healthTagEl, st.stepHealthBadge);
+        patchClasses(refs.healthTagEl, {
+          'is-critical': st.stepHealthLevel === 'critical',
+          'is-notice': st.stepHealthLevel === 'notice',
+        });
+      }
+      const titleText = st.stepHealthDetail
+        ? `${modelDisplay.title} · ${st.stepHealthDetail}`
+        : modelDisplay.title;
+      patchAttr(refs.td, 'title', titleText);
     },
   },
 
@@ -224,7 +244,7 @@ export const STEP_COLUMN_REGISTRY = Object.freeze({
     key: 'ttft',
     thLabel: () => t('stepCol.ttft.th'),
     optLabel: () => t('stepCol.ttft.opt'),
-    sigPart: (st) => `${st.ttftSec}`,
+    sigPart: (st) => `${st.ttftSec}:${st.infraNote || ''}`,
     createCell: () => {
       const valEl = h('span');
       const td = h('td', {}, [valEl]);
@@ -234,6 +254,7 @@ export const STEP_COLUMN_REGISTRY = Object.freeze({
       patchText(refs.valEl, formatMetric(st.ttftSec, 's'));
       const tone = getTtftToneClass(st.ttftSec);
       patchAttr(refs.valEl, 'class', tone || null);
+      patchAttr(refs.td, 'title', st.infraNote || null);
     },
   },
 
@@ -391,7 +412,7 @@ export const STEP_COLUMN_REGISTRY = Object.freeze({
     thLabel: () => t('stepCol.cache.th'),
     optLabel: () => t('stepCol.cache.opt'),
     sigPart: (st) =>
-      `${st.cacheHitPct ?? 0}:${(st.inputTokens || 0) + (st.cacheReadTokens || 0) > 0 ? 1 : 0}`,
+      `${st.cacheHitPct ?? 0}:${(st.inputTokens || 0) + (st.cacheReadTokens || 0) > 0 ? 1 : 0}:${st.cacheNote || ''}`,
     createCell: () => {
       const valEl = h('span', {
         className: 'cell-value tone-muted',
@@ -408,6 +429,7 @@ export const STEP_COLUMN_REGISTRY = Object.freeze({
         'class',
         `cell-value ${getCacheToneClass(st.cacheHitPct ?? 0, promptTokens)}`
       );
+      patchAttr(refs.td, 'title', st.cacheNote || null);
     },
   },
 

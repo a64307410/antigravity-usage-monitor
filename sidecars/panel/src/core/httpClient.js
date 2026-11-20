@@ -285,3 +285,96 @@ export async function callSidecarApi(path, { method = 'GET', body, abortKey = ''
   }
   return promise;
 }
+
+/**
+ * Copy text to system clipboard across Webview / Shadow DOM / Sidecar sandbox:
+ * 1. Synchronous hidden `<textarea>` + `execCommand('copy')` while user activation is active;
+ * 2. Async `navigator.clipboard.writeText`;
+ * 3. Sidecar `/api/clipboard` fallback.
+ */
+export async function copyTextToClipboard(text) {
+  const str = String(text ?? '');
+  if (!str) return false;
+  if (typeof window !== 'undefined') {
+    window.__AGLastCopiedText = str;
+  }
+
+  let syncCopied = false;
+  if (
+    typeof document !== 'undefined' &&
+    typeof document.createElement === 'function' &&
+    typeof document.execCommand === 'function' &&
+    document.body?.appendChild
+  ) {
+    let ta = null;
+    const prevActive = document.activeElement;
+    try {
+      ta = document.createElement('textarea');
+      ta.value = str;
+      ta.setAttribute?.('readonly', '');
+      if (ta.style) {
+        ta.style.position = 'fixed';
+        ta.style.top = '0';
+        ta.style.left = '-9999px';
+        ta.style.opacity = '0';
+        ta.style.pointerEvents = 'none';
+      }
+      document.body.appendChild(ta);
+      ta.focus?.({ preventScroll: true });
+      ta.select?.();
+      ta.setSelectionRange?.(0, str.length);
+      syncCopied = Boolean(document.execCommand('copy'));
+    } catch {
+      syncCopied = false;
+    } finally {
+      ta?.remove?.();
+      try {
+        prevActive?.focus?.({ preventScroll: true });
+      } catch {
+        // ignore focus restore failure
+      }
+    }
+  }
+
+  let asyncCopied = false;
+  if (typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(str);
+      asyncCopied = true;
+    } catch {
+      asyncCopied = false;
+    }
+  }
+
+  if (syncCopied || asyncCopied) {
+    return true;
+  }
+
+  try {
+    const res = await callSidecarApi('/api/clipboard', {
+      method: 'POST',
+      body: { text: str },
+    });
+    if (res?.ok) return true;
+  } catch {
+    // ignore fallback failure
+  }
+  return false;
+}
+
+export async function copyWithTimedFeedback(text, timerHolder, onToggle, durationMs = 1500) {
+  const ok = await copyTextToClipboard(text);
+  if (!ok || typeof onToggle !== 'function') return ok;
+  if (timerHolder?.id) {
+    clearTimeout(timerHolder.id);
+    timerHolder.id = null;
+  }
+  onToggle(true);
+  if (timerHolder) {
+    timerHolder.id = setTimeout(() => {
+      timerHolder.id = null;
+      onToggle(false);
+    }, durationMs);
+  }
+  return true;
+}

@@ -1046,18 +1046,414 @@ export function extractModelSteps(rawSteps = [], generatorMetadata = []) {
   let pendingTurnDoorbellOnly = false;
   let pendingErrorSteps = [];
 
+  const ihNormalizeFileKey = (rawPath) => {
+    if (typeof rawPath !== 'string' || !rawPath.trim()) return '';
+    let cleaned = unwrapArgString(rawPath).replace(/^file:\/\/\/?/i, '');
+    try {
+      if (cleaned.includes('%')) cleaned = decodeURIComponent(cleaned);
+    } catch {
+      // 忽略 URI 解码异常
+    }
+    cleaned = cleaned.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    const parts = cleaned.split('/').filter(Boolean);
+    return parts.slice(-3).join('/') || cleaned;
+  };
+
+  const ihExtractDistinctiveLines = (snippet) => {
+    const set = new Set();
+    if (typeof snippet !== 'string' || !snippet.trim()) return set;
+    const lines = snippet.slice(0, 4096).split(/\r?\n/);
+    for (const rawLine of lines) {
+      const norm = rawLine.trim().replace(/\s+/g, ' ');
+      if (
+        norm.length >= 10 &&
+        /[a-zA-Z0-9_\u4e00-\u9fa5]/.test(norm) &&
+        !/^[{}()[\];,]+$/.test(norm)
+      ) {
+        set.add(norm);
+        if (set.size >= 40) break;
+      }
+    }
+    return set;
+  };
+
+  const ihComputeFourGramRepeatRatio = (text) => {
+    if (typeof text !== 'string' || text.length < 320) return 0;
+    const bounded = text.slice(0, 8192);
+    const words = bounded.split(/\s+/).filter((w) => w.length >= 2);
+    if (words.length < 60) return 0;
+    const n = 4;
+    const seen = new Set();
+    const totalWindows = words.length - n + 1;
+    for (let i = 0; i < totalWindows; i++) {
+      seen.add(`${words[i]}\u0001${words[i + 1]}\u0001${words[i + 2]}\u0001${words[i + 3]}`);
+    }
+    return +Math.max(0, 1 - seen.size / totalWindows).toFixed(3);
+  };
+
+  const ihIsDynamicOrAppendLogPath = (rawPath) => {
+    if (typeof rawPath !== 'string' || !rawPath.trim()) return false;
+    const norm = unwrapArgString(rawPath).replace(/\\/g, '/').toLowerCase();
+    return (
+      /\.(?:jsonl|log|out|pid|lock)$/i.test(norm) ||
+      norm.includes('/.system_generated/logs/') ||
+      norm.includes('/.system_generated/steps/') ||
+      norm.includes('/.system_generated/tasks/')
+    );
+  };
+
+  const ihExtractRawErrorText = (errVal) => {
+    if (!errVal) return '';
+    if (typeof errVal === 'string') {
+      const trimmed = errVal.trim();
+      return trimmed === '[object Object]' ? '' : trimmed;
+    }
+    if (typeof errVal === 'object') {
+      for (const k of [
+        'userErrorMessage',
+        'shortError',
+        'message',
+        'details',
+        'errorMessage',
+        'reason',
+        'code',
+        'status',
+      ]) {
+        const v = errVal[k];
+        if (typeof v === 'string' && v.trim() && v.trim() !== '[object Object]') {
+          return v.trim();
+        }
+      }
+      if (errVal.error && errVal.error !== errVal) {
+        const nested = ihExtractRawErrorText(errVal.error);
+        if (nested) return nested;
+      }
+      try {
+        const s = JSON.stringify(errVal);
+        return s && s !== '{}' ? s.slice(0, 240) : '';
+      } catch {
+        return '';
+      }
+    }
+    return String(errVal);
+  };
+
+  const ihIsTestRunnerCommand = (cmd) =>
+    /\b(?:npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|node\s+--test|pytest|py\.test|jest|vitest|cargo\s+(?:test|check)|go\s+test|tsc\b|eslint\b|biome\b|npm\s+run\s+(?:build|lint|typecheck)|pnpm\s+(?:build|lint)|yarn\s+(?:build|lint))/i.test(
+      String(cmd || '')
+    );
+
+  const ihIsReadOnlyShellProbe = (cmd) => {
+    const c = String(cmd || '').trim();
+    if (!c) return false;
+    if (
+      /\b(?:edit|write|Set-Content|Add-Content|Out-File|Remove-Item|rm\s|mv\s|cp\s|git\s+(?:commit|push|reset|checkout|restore|merge|rebase|cherry-pick)|npm\s+(?:install|ci|run|test)|node\s+-e|node\s+--input-type|python3?\s+-c)\b/i.test(
+        c
+      )
+    ) {
+      return false;
+    }
+    return /^(?:rg|grep|Select-String|Get-ChildItem|Get-Content|Get-Item|Test-Path|ls|dir|cat|head|tail|find|which|where(?:\.exe)?|git\s+(?:status|log|diff|show|branch|remote|rev-parse)|ps|Get-Process|netstat|lsof)\b/i.test(
+      c
+    );
+  };
+
+  const ihExtractRunCommandResult = (child) => {
+    if (!child || typeof child !== 'object') {
+      return { exitCode: null, outputText: '', statusError: false };
+    }
+    const rc = child.runCommand || child.commandStatus || {};
+    const parts = [];
+    const pushStr = (v) => {
+      if (typeof v === 'string' && v.trim()) {
+        parts.push(v);
+      } else if (v && typeof v === 'object') {
+        if (typeof v.full === 'string' && v.full.trim()) parts.push(v.full);
+        else if (typeof v.truncated === 'string' && v.truncated.trim()) parts.push(v.truncated);
+        else if (typeof v.output === 'string' && v.output.trim()) parts.push(v.output);
+      }
+    };
+    pushStr(child.content);
+    pushStr(rc.combinedOutput);
+    pushStr(rc.output);
+    pushStr(rc.stdout);
+    pushStr(rc.stderr);
+    const errTxt = ihExtractRawErrorText(child.error || child.errorMessage || rc.error);
+    if (errTxt) parts.push(errTxt);
+    const outputText = parts.join('\n');
+
+    let exitCode = null;
+    const rawExit = rc.exitCode ?? rc.returnCode ?? child.exitCode;
+    if (typeof rawExit === 'number' && Number.isFinite(rawExit)) {
+      exitCode = rawExit;
+    } else if (typeof rawExit === 'string' && /^-?\d+$/.test(rawExit.trim())) {
+      exitCode = Number(rawExit.trim());
+    } else {
+      const mExit = outputText.match(/Command exited with code (-?\d+)/i);
+      if (mExit) exitCode = Number(mExit[1]);
+    }
+    const statusUpper = String(child.status || rc.status || '').toUpperCase();
+    const statusError =
+      statusUpper.includes('ERROR') ||
+      statusUpper.includes('FAILED') ||
+      Boolean(errTxt && !child.content && !rc.combinedOutput);
+    return { exitCode, outputText, statusError };
+  };
+
+  const ihExtractScriptCrashLabel = (cmd, resultText, exitCode, statusError) => {
+    const c = String(cmd || '');
+    const r = String(resultText || '');
+    const commandFailed = statusError || (Number.isInteger(exitCode) && exitCode !== 0);
+    if (
+      !commandFailed &&
+      !/(?:SyntaxError:|JSONDecodeError:|IndentationError:|ERR_UNSUPPORTED_ESM_URL_SCHEME)/.test(r)
+    ) {
+      return '';
+    }
+    if (/ERR_UNSUPPORTED_ESM_URL_SCHEME/i.test(r)) return 'ESM URL 协议错误';
+    if (/ERR_MODULE_NOT_FOUND|Cannot find module|ModuleNotFoundError/i.test(r)) return '模块导入缺失';
+    if (/SyntaxError:|Unexpected token|Unterminated string/i.test(r)) return 'SyntaxError 语法报错';
+    if (/JSONDecodeError:/i.test(r)) return 'JSON 解析崩溃';
+    if (/IndentationError:/i.test(r)) return 'Python 缩进语法报错';
+    if (/ParserError|CommandNotFoundException/i.test(r)) return 'Shell 语法/命令不存在';
+    if (/Access to the path [^\n]+ is denied/i.test(r)) return '路径访问权限报错';
+    const looksInline =
+      /(?:python3?\s+-c|node\s+(?:--input-type=\S+\s+)?-e|powershell(?:\.exe)?\s|^\s*\$|\|\s*node\s+-)/i.test(
+        c
+      );
+    if (looksInline && /(?:ReferenceError:|TypeError:|Traceback \(most recent call last\))/i.test(r)) {
+      return '内联脚本运行异常';
+    }
+    return '';
+  };
+
+  const ihIsEditToolFailure = (resultStep) => {
+    if (!resultStep || typeof resultStep !== 'object') return false;
+    const st = String(resultStep.status || '').toUpperCase();
+    if (st.includes('ERROR') || st.includes('FAILED')) return true;
+    const errTxt = ihExtractRawErrorText(
+      resultStep.error ||
+        resultStep.errorMessage ||
+        resultStep.codeAction?.error ||
+        resultStep.editFile?.error ||
+        resultStep.replaceFileContent?.error
+    );
+    if (errTxt) return true;
+    const txt = String(resultStep.content || '');
+    return /(?:Encountered error in tool execution|Target[^\n]{0,40}not found|exact match|Failed to (?:edit|replace|apply)|could not find target|file does not exist|ENOENT)/i.test(
+      txt
+    );
+  };
+
+  const ihIsGitRollbackCommand = (cmd) =>
+    /\bgit\b[^\n]*(?:\bcheckout\s+(?:HEAD\s+)?--|\brestore\b(?:\s+--staged|\s+--worktree|\s+[^\s-])|\breset\s+--hard\b)/i.test(
+      String(cmd || '')
+    );
+
+  const ihIsUserRejectionPrompt = (promptText) =>
+    /(?:打断|重做|重新做|重新调整|很糟糕|太糟糕|做法很糟|很不满意|全错了|改错了|回退|回滚|撤销|不要这样|完全不对|start over|revert|terrible|all wrong)/i.test(
+      String(promptText || '')
+    );
+
+  const ihExtractToolMeta = (rawToolCall, fallbackStep = null) => {
+    const info = summarizeToolCall(rawToolCall, fallbackStep);
+    const stepToolCall = fallbackStep?.metadata?.toolCall || {};
+    let args = {};
+    let rawArgsStr = '';
+    const candidateArgs =
+      rawToolCall?.args ??
+      rawToolCall?.arguments ??
+      rawToolCall?.argumentsJson ??
+      rawToolCall?.function?.arguments ??
+      stepToolCall?.argumentsJson;
+    if (candidateArgs && typeof candidateArgs === 'object') {
+      args = candidateArgs;
+    } else if (typeof candidateArgs === 'string' && candidateArgs.trim()) {
+      rawArgsStr = candidateArgs.trim();
+      try {
+        const parsed = JSON.parse(rawArgsStr);
+        if (parsed && typeof parsed === 'object') args = parsed;
+      } catch {
+        // 忽略未闭合 JSON
+      }
+    }
+    const stepPayload =
+      fallbackStep?.runCommand ||
+      fallbackStep?.commandStatus ||
+      fallbackStep?.viewFile ||
+      fallbackStep?.readFile ||
+      fallbackStep?.codeAction ||
+      fallbackStep?.editFile ||
+      fallbackStep?.replaceFileContent ||
+      fallbackStep?.writeToFile ||
+      null;
+    const pick = (keys) => {
+      for (const k of keys) {
+        const a = unwrapArgString(args?.[k]);
+        if (a) return a;
+        const camel = k.charAt(0).toLowerCase() + k.slice(1);
+        const ac = unwrapArgString(args?.[camel]);
+        if (ac) return ac;
+        if (stepPayload && typeof stepPayload === 'object') {
+          const sp = unwrapArgString(stepPayload[k] ?? stepPayload[camel]);
+          if (sp) return sp;
+        }
+      }
+      return extractPartialJsonStringField(rawArgsStr, keys);
+    };
+    const rawPath = pick([
+      'Path',
+      'TargetFile',
+      'AbsolutePath',
+      'AbsolutePathUri',
+      'FilePath',
+      'File',
+      'Uri',
+    ]);
+    const cmd = pick(['CommandLine', 'Command', 'command']);
+    const startRaw = Number(pick(['StartLine', 'startLine']));
+    const endRaw = Number(pick(['EndLine', 'endLine']));
+    const byteOffsetRaw = Number(pick(['ByteOffset', 'byteOffset']));
+    const byteOffset = Number.isFinite(byteOffsetRaw) && byteOffsetRaw > 0 ? byteOffsetRaw : 0;
+    const hasExplicitStartLine = Number.isInteger(startRaw) && startRaw > 0;
+    const hasExplicitEndLine =
+      Number.isInteger(endRaw) && endRaw >= (hasExplicitStartLine ? startRaw : 1);
+    const startLine = hasExplicitStartLine ? startRaw : 1;
+    const endLine = hasExplicitEndLine ? endRaw : startLine + 799;
+
+    let targetText = pick(['Target', 'TargetContent', 'old_string', 'OldString']);
+    let replacementText = pick(['Replacement', 'ReplacementContent', 'new_string', 'NewString']);
+    const chunks =
+      args?.ReplacementChunks ??
+      args?.replacementChunks ??
+      stepPayload?.ReplacementChunks ??
+      stepPayload?.replacementChunks;
+    if (Array.isArray(chunks) && chunks.length > 0) {
+      const tParts = [];
+      const rParts = [];
+      for (const ch of chunks) {
+        const tc = unwrapArgString(ch?.TargetContent ?? ch?.targetContent ?? ch?.Target);
+        const rc = unwrapArgString(
+          ch?.ReplacementContent ?? ch?.replacementContent ?? ch?.Replacement
+        );
+        if (tc) tParts.push(tc);
+        if (rc) rParts.push(rc);
+      }
+      if (!targetText && tParts.length > 0) targetText = tParts.join('\n').slice(0, 4096);
+      if (!replacementText && rParts.length > 0) replacementText = rParts.join('\n').slice(0, 4096);
+    }
+
+    let editSpan = null;
+    const resStr = String(fallbackStep?.content || fallbackStep?.viewFile?.content || '');
+    const wasTruncated =
+      /Partial read \(lines \d+-\d+|truncated at the \d+-byte limit|<truncated \d+ (?:bytes|lines)>/i.test(
+        resStr
+      ) || Boolean(fallbackStep?.viewFile?.truncated);
+    const mLine = resStr.match(
+      /starting at line (\d+)(?:\s*\(([+-]?\d+)\/([+-]?\d+)\s*lines?\))?/i
+    );
+    if (mLine) {
+      const ls = Number(mLine[1]);
+      if (Number.isInteger(ls) && ls > 0) {
+        const spanLen = Math.max(
+          2,
+          Math.abs(Number(mLine[2] || 0)),
+          Math.abs(Number(mLine[3] || 0))
+        );
+        editSpan = { start: ls, end: ls + spanLen };
+      }
+    } else if (hasExplicitStartLine) {
+      editSpan = { start: startLine, end: hasExplicitEndLine ? endLine : startLine + 4 };
+    }
+
+    const searchQuery = pick(['Query', 'query', 'Pattern', 'pattern']);
+
+    return {
+      nameLower: info.toolName,
+      rawPath,
+      normPath: ihNormalizeFileKey(rawPath),
+      isDynamicLog: ihIsDynamicOrAppendLogPath(rawPath),
+      startLine,
+      endLine,
+      byteOffset,
+      wasTruncated,
+      cmd,
+      searchQuery,
+      editSpan,
+      targetLines: ihExtractDistinctiveLines(targetText),
+      replacementLines: ihExtractDistinctiveLines(replacementText),
+    };
+  };
+
+  let inExecutionPhase = false;
+  let justSwitchedExecPhase = false;
+  const fileVersionMap = new Map();
+  const fileReadsMap = new Map();
+  const turnFileEditHistoryMap = new Map();
+  const failedEditUnreadFiles = new Set();
+  const turnToolCallCounts = new Map();
+  let turnVerifyFailStreak = 0;
+  let turnReadOnlyStreak = 0;
+  let awaitingRollbackConfirmForTurn = null;
+  let rollbackLookaheadRemaining = 0;
+
   const isErrorMessageStep = (step) => {
     if (!step || typeof step !== 'object') return false;
     const t = String(step.type || '').trim().toUpperCase();
     return (
       t === 'CORTEX_STEP_TYPE_ERROR_MESSAGE' ||
       t === 'ERROR_MESSAGE' ||
-      Boolean(step.errorMessage && typeof step.errorMessage === 'object')
+      Boolean(step.errorMessage && typeof step.errorMessage === 'object') ||
+      Boolean(t.includes('ERROR') && !step?.metadata?.modelUsage && !step?.metadata?.retryInfos?.[0]?.usage)
     );
+  };
+
+  const ihFormatUpstreamErrorLabel = (rawErr) => {
+    if (!rawErr) return '';
+    if (/http2:\s*timeout/i.test(rawErr)) {
+      return 'http2: timeout awaiting response headers';
+    }
+    if (/\b429\b|RESOURCE_EXHAUSTED|rate.?limit/i.test(rawErr)) {
+      return '上游 429 限流重试';
+    }
+    if (/\b503\b|\b502\b|\b504\b|UNAVAILABLE|DEADLINE_EXCEEDED/i.test(rawErr)) {
+      return '上游网关超时/不可用 (5xx)';
+    }
+    const cleanErr = cleanSingleLineSnippet(rawErr, 72);
+    return cleanErr && cleanErr !== '[object Object]' ? cleanErr : '上游请求中断重试';
+  };
+
+  const extractPendingErrorsSummary = (errSteps) => {
+    let count = 0;
+    let firstText = '';
+    for (const es of errSteps || []) {
+      const rawErr =
+        ihExtractRawErrorText(es?.error) ||
+        ihExtractRawErrorText(es?.errorMessage) ||
+        ihExtractRawErrorText(es?.content);
+      if (rawErr && /context canceled by user|stream reading error:\s*context canceled/i.test(rawErr)) {
+        continue;
+      }
+      count += 1;
+      if (!firstText) {
+        firstText = ihFormatUpstreamErrorLabel(rawErr) || '上游请求中断重试';
+      }
+    }
+    return { count, firstText };
   };
 
   const mergeTrailingErrorsIntoStep = (targetStep, errSteps) => {
     if (!targetStep || !Array.isArray(errSteps) || errSteps.length === 0) return;
+    if (targetStep.healthSignals) {
+      const errSum = extractPendingErrorsSummary(errSteps);
+      if (errSum.count > 0) {
+        targetStep.healthSignals.upstreamErrorCount =
+          (targetStep.healthSignals.upstreamErrorCount || 0) + errSum.count;
+        if (!targetStep.healthSignals.upstreamErrorText && errSum.firstText) {
+          targetStep.healthSignals.upstreamErrorText = errSum.firstText;
+        }
+      }
+    }
     const prevEvents = Array.isArray(targetStep.anomaly?.events) ? targetStep.anomaly.events : [];
     const trailingRec = buildStepAnomalyRecord(null, null, null, errSteps);
     if (!trailingRec) return;
@@ -1123,6 +1519,14 @@ export function extractModelSteps(rawSteps = [], generatorMetadata = []) {
   };
 
   rawSteps.forEach((s, index) => {
+    if (isCheckpointStep(s)) {
+      fileReadsMap.clear();
+      turnFileEditHistoryMap.clear();
+      failedEditUnreadFiles.clear();
+      turnToolCallCounts.clear();
+      turnReadOnlyStreak = 0;
+    }
+
     const isHumanBoundary = isUserTurnBoundary(s);
     const isWakeupBoundary = !isHumanBoundary && isSystemWakeupBoundary(s);
     if (isHumanBoundary || isWakeupBoundary) {
@@ -1133,9 +1537,26 @@ export function extractModelSteps(rawSteps = [], generatorMetadata = []) {
         }
       }
       pendingErrorSteps = [];
+      turnFileEditHistoryMap.clear();
+      failedEditUnreadFiles.clear();
+      turnToolCallCounts.clear();
+      turnVerifyFailStreak = 0;
+      turnReadOnlyStreak = 0;
+      inExecutionPhase = false;
+      justSwitchedExecPhase = false;
+
       const { cleanText, legacyPrompt, hasMedia, isDoorbellOnly = false } = isHumanBoundary
         ? extractUserTurnInfo(s)
         : extractSystemWakeupInfo(s);
+      if (isHumanBoundary && activeTurnIndex !== null && ihIsUserRejectionPrompt(cleanText || legacyPrompt)) {
+        for (const prevStep of result) {
+          if (prevStep.turnIndex === activeTurnIndex && prevStep.healthSignals) {
+            prevStep.healthSignals.userRejectedTurn = true;
+          }
+        }
+        awaitingRollbackConfirmForTurn = activeTurnIndex;
+        rollbackLookaheadRemaining = 4;
+      }
       if (!hasUnconsumedTurn) {
         hasUnconsumedTurn = true;
         pendingTurnPrompts = legacyPrompt ? [legacyPrompt] : [];
@@ -1161,6 +1582,20 @@ export function extractModelSteps(rawSteps = [], generatorMetadata = []) {
           pendingTurnCleanPrompts.push(cleanText);
         }
         if (hasMedia) pendingTurnHasMedia = true;
+      }
+    } else {
+      const stTypeUpper = String(s?.type || '').toUpperCase();
+      if (stTypeUpper.includes('SYSTEM') && typeof s?.content === 'string') {
+        if (
+          s.content.includes('Plan mode is off') ||
+          s.content.includes('runs on the execution model')
+        ) {
+          inExecutionPhase = true;
+          justSwitchedExecPhase = true;
+        } else if (s.content.includes('[plan review]')) {
+          inExecutionPhase = false;
+          justSwitchedExecPhase = false;
+        }
       }
     }
 
@@ -1333,6 +1768,321 @@ export function extractModelSteps(rawSteps = [], generatorMetadata = []) {
 
     const anomalyRec = buildStepAnomalyRecord(s, m, chat, stepPendingErrors);
 
+    const childToolSteps = [];
+    for (let k = index + 1; k < rawSteps.length; k++) {
+      const cand = rawSteps[k];
+      if (!cand || typeof cand !== 'object') continue;
+      if (cand?.metadata?.modelUsage || cand?.metadata?.retryInfos?.[0]?.usage) break;
+      if (isPlannerStep(cand) || isUserTurnBoundary(cand) || isCheckpointStep(cand)) break;
+      if (isAuxiliaryMetaStep(cand)) continue;
+      const ct = String(cand.type || '').toUpperCase();
+      if (ct.includes('ERROR') || ct.includes('SYSTEM')) continue;
+      childToolSteps.push(cand);
+    }
+
+    const pToolsList = getStepPlannerToolCalls(s);
+    const toolPairs =
+      pToolsList.length > 0
+        ? pToolsList.map((tc, tIdx) => ({ tc, child: childToolSteps[tIdx] || null }))
+        : childToolSteps.map((child) => ({ tc: null, child }));
+
+    let editAttemptCount = 0;
+    let editFaultCount = 0;
+    let blindEditRetryCount = 0;
+    let toolFaultCount = 0;
+    let toolFaultLabel = '';
+    let verifyFailCount = 0;
+    let amnesiaReadCount = 0;
+    let sameRegionReworkCount = 0;
+    let oscillationRevertCount = 0;
+    let identicalToolStreak = 0;
+    let cleanVerifyPass = false;
+    let isCodeEditStep = false;
+    let isMutationStep = false;
+    let stepAllToolsReadOnly = toolPairs.length > 0;
+    let triggersExecPhaseNext = false;
+    let exitsExecPhaseNow = false;
+    const currentResultOrd = result.length;
+
+    if (awaitingRollbackConfirmForTurn !== null) {
+      rollbackLookaheadRemaining -= 1;
+    }
+
+    for (const { tc, child } of toolPairs) {
+      const meta = ihExtractToolMeta(tc, child);
+      const tName = meta.nameLower;
+      if (tName === 'exit_plan_mode') {
+        triggersExecPhaseNext = true;
+        stepAllToolsReadOnly = false;
+      } else if (tName === 'enter_plan_mode') {
+        exitsExecPhaseNow = true;
+        stepAllToolsReadOnly = false;
+      } else if (tName === 'read_file' || tName === 'view_file') {
+        if (meta.normPath) {
+          failedEditUnreadFiles.delete(meta.normPath);
+        }
+        if (meta.normPath && !meta.isDynamicLog && !ihIsEditToolFailure(child)) {
+          const curVer = fileVersionMap.get(meta.normPath) || 0;
+          const prevReads = fileReadsMap.get(meta.normPath) || [];
+          const reqLen = Math.max(1, meta.endLine - meta.startLine + 1);
+          const isByteOffsetContinuation = meta.byteOffset > 0;
+          const isAmnesiaDup =
+            !isByteOffsetContinuation &&
+            prevReads.some((pr) => {
+              if (
+                pr.version !== curVer ||
+                currentResultOrd <= pr.stepOrd ||
+                currentResultOrd - pr.stepOrd > 8
+              ) {
+                return false;
+              }
+              if (pr.wasTruncated && meta.startLine > pr.start) {
+                return false;
+              }
+              const overlap = Math.max(
+                0,
+                Math.min(meta.endLine, pr.end) - Math.max(meta.startLine, pr.start) + 1
+              );
+              const prSpanLen = Math.max(1, pr.end - pr.start + 1);
+              return overlap / Math.max(reqLen, prSpanLen) >= 0.75;
+            });
+          if (isAmnesiaDup) {
+            amnesiaReadCount += 1;
+          }
+          prevReads.push({
+            start: meta.startLine,
+            end: meta.endLine,
+            wasTruncated: meta.wasTruncated,
+            version: curVer,
+            stepOrd: currentResultOrd,
+          });
+          if (prevReads.length > 8) prevReads.shift();
+          fileReadsMap.set(meta.normPath, prevReads);
+
+          if (!isByteOffsetContinuation && !meta.wasTruncated) {
+            const fp = `read:${meta.normPath}:${meta.startLine}-${meta.endLine}:v${curVer}`;
+            const nextCnt = (turnToolCallCounts.get(fp) || 0) + 1;
+            turnToolCallCounts.set(fp, nextCnt);
+            if (nextCnt > identicalToolStreak) identicalToolStreak = nextCnt;
+          }
+        }
+      } else if (
+        tName === 'grep_search' ||
+        tName === 'find_by_name' ||
+        tName === 'list_dir' ||
+        tName === 'search_web'
+      ) {
+        const fpKey = `${tName}:${meta.normPath}:${(meta.searchQuery || '').slice(0, 80).toLowerCase()}`;
+        if (meta.searchQuery || meta.normPath) {
+          const nextCnt = (turnToolCallCounts.get(fpKey) || 0) + 1;
+          turnToolCallCounts.set(fpKey, nextCnt);
+          if (nextCnt > identicalToolStreak) identicalToolStreak = nextCnt;
+        }
+      } else if (
+        tName === 'edit_file' ||
+        tName === 'replace_file_content' ||
+        tName === 'multi_replace_file_content' ||
+        tName === 'edit_notebook'
+      ) {
+        stepAllToolsReadOnly = false;
+        isCodeEditStep = true;
+        isMutationStep = true;
+        editAttemptCount += 1;
+        if (meta.normPath && failedEditUnreadFiles.has(meta.normPath)) {
+          blindEditRetryCount += 1;
+        }
+        if (child && ihIsEditToolFailure(child)) {
+          editFaultCount += 1;
+          if (meta.normPath) failedEditUnreadFiles.add(meta.normPath);
+        } else if (meta.normPath) {
+          failedEditUnreadFiles.delete(meta.normPath);
+          fileVersionMap.set(meta.normPath, (fileVersionMap.get(meta.normPath) || 0) + 1);
+          const history = turnFileEditHistoryMap.get(meta.normPath) || [];
+          const priorStepEdits = history.filter((h) => h.stepOrd < currentResultOrd);
+          const matchingPriors = [];
+          let stepRevertedPrior = false;
+          for (const prev of priorStepEdits) {
+            const hasCodeInfo = meta.targetLines.size > 0 && prev.replacementLines.size > 0;
+            let overwritesOwnCode = false;
+            for (const ln of meta.targetLines) {
+              if (prev.replacementLines.has(ln)) {
+                overwritesOwnCode = true;
+                break;
+              }
+            }
+            let revertsPriorTarget = false;
+            if (meta.replacementLines.size > 0 && prev.targetLines.size > 0) {
+              for (const ln of meta.replacementLines) {
+                if (prev.targetLines.has(ln) && !prev.replacementLines.has(ln)) {
+                  revertsPriorTarget = true;
+                  break;
+                }
+              }
+            }
+            const spanOverlaps = Boolean(
+              meta.editSpan &&
+                prev.span &&
+                meta.editSpan.start <= prev.span.end + (hasCodeInfo ? 0 : 2) &&
+                meta.editSpan.end >= prev.span.start - (hasCodeInfo ? 0 : 2)
+            );
+            if (overwritesOwnCode || revertsPriorTarget || (!hasCodeInfo && spanOverlaps)) {
+              matchingPriors.push(prev);
+              if (revertsPriorTarget) stepRevertedPrior = true;
+            }
+          }
+          const reworkDepth =
+            matchingPriors.length > 0
+              ? Math.max(...matchingPriors.map((p) => p.reworkDepth || 0)) + 1
+              : 0;
+          if (reworkDepth > sameRegionReworkCount) {
+            sameRegionReworkCount = reworkDepth;
+          }
+          if (stepRevertedPrior) {
+            oscillationRevertCount += 1;
+          }
+          history.push({
+            stepOrd: currentResultOrd,
+            span: meta.editSpan,
+            targetLines: meta.targetLines,
+            replacementLines: meta.replacementLines,
+            reworkDepth,
+          });
+          if (history.length > 24) history.shift();
+          turnFileEditHistoryMap.set(meta.normPath, history);
+        }
+      } else if (tName === 'write_file' || tName === 'write_to_file') {
+        stepAllToolsReadOnly = false;
+        isCodeEditStep = true;
+        isMutationStep = true;
+        if (meta.normPath) {
+          failedEditUnreadFiles.delete(meta.normPath);
+          fileVersionMap.set(meta.normPath, (fileVersionMap.get(meta.normPath) || 0) + 1);
+        }
+      } else if (tName === 'run_command') {
+        const isProbe = ihIsReadOnlyShellProbe(meta.cmd);
+        const isVerifyCmd = ihIsTestRunnerCommand(meta.cmd);
+        if (!isProbe) {
+          stepAllToolsReadOnly = false;
+          isMutationStep = true;
+        }
+        const cmdRes = ihExtractRunCommandResult(child);
+        const crashLabel = !isVerifyCmd
+          ? ihExtractScriptCrashLabel(meta.cmd, cmdRes.outputText, cmdRes.exitCode, cmdRes.statusError)
+          : '';
+        if (crashLabel) {
+          toolFaultCount += 1;
+          if (!toolFaultLabel) toolFaultLabel = crashLabel;
+          stepAllToolsReadOnly = false;
+        } else if (isVerifyCmd) {
+          const explicitFail =
+            cmdRes.statusError ||
+            (Number.isInteger(cmdRes.exitCode) && cmdRes.exitCode !== 0) ||
+            /\b(?:FAIL|ERR!|TEST_EXIT=[1-9]|not ok \d+|AssertionError|# fail [1-9])\b/.test(
+              cmdRes.outputText
+            );
+          if (explicitFail) {
+            verifyFailCount += 1;
+            turnVerifyFailStreak += 1;
+          } else if (child) {
+            cleanVerifyPass = true;
+            turnVerifyFailStreak = 0;
+          }
+        }
+        if (isProbe && meta.cmd) {
+          const fpCmd = `cmd:${meta.cmd.trim().replace(/\s+/g, ' ').slice(0, 100)}`;
+          const nextCnt = (turnToolCallCounts.get(fpCmd) || 0) + 1;
+          turnToolCallCounts.set(fpCmd, nextCnt);
+          if (nextCnt > identicalToolStreak) identicalToolStreak = nextCnt;
+        }
+        if (
+          awaitingRollbackConfirmForTurn !== null &&
+          rollbackLookaheadRemaining >= 0 &&
+          ihIsGitRollbackCommand(meta.cmd)
+        ) {
+          for (const prevStep of result) {
+            if (prevStep.turnIndex === awaitingRollbackConfirmForTurn && prevStep.healthSignals) {
+              prevStep.healthSignals.confirmedRollback = true;
+            }
+          }
+          awaitingRollbackConfirmForTurn = null;
+          rollbackLookaheadRemaining = 0;
+        }
+      } else {
+        stepAllToolsReadOnly = false;
+      }
+    }
+    if (awaitingRollbackConfirmForTurn !== null && rollbackLookaheadRemaining <= 0) {
+      awaitingRollbackConfirmForTurn = null;
+    }
+
+    const respText = getStepResponseText(s);
+    if (stepAllToolsReadOnly && respText.length < 360 && responseTokens < 450) {
+      turnReadOnlyStreak += 1;
+    } else {
+      turnReadOnlyStreak = 0;
+    }
+
+    const explicitThinkingText = getStepThinkingText(s);
+    const thinkingTextLen =
+      explicitThinkingText.length || Math.max(0, Number(p.thinkingByteLen || 0));
+    const hasThinkingText = thinkingTextLen > 0;
+    const pendingErrSum = extractPendingErrorsSummary(stepPendingErrors);
+    const metaRetryCount = Math.max(
+      0,
+      (Array.isArray(m?.retryInfos) ? m.retryInfos.length : 0) - 1,
+      Number(chat?.retryCount || 0) || 0,
+      Array.isArray(chat?.retryInfos) ? chat.retryInfos.filter((ri) => ri?.error || ri?.errorMessage).length : 0
+    );
+    const anomalyFirstMsg =
+      anomalyRec?.anomaly?.events?.find((ev) => ev?.message)?.message || '';
+    const upstreamErrorCount = pendingErrSum.count;
+    const upstreamErrorText =
+      pendingErrSum.firstText || ihFormatUpstreamErrorLabel(anomalyFirstMsg);
+    const retryCount = metaRetryCount;
+    const wasCanceled =
+      /CANCEL/i.test(String(s?.status || '')) ||
+      childToolSteps.some((cs) => /CANCEL/i.test(String(cs?.status || '')));
+    const outputRepeatRatio = ihComputeFourGramRepeatRatio(respText);
+    const stepInExecutionPhase = exitsExecPhaseNow ? false : inExecutionPhase;
+
+    const healthSignals = {
+      sigVer: 2,
+      upstreamErrorCount,
+      upstreamErrorText,
+      retryCount,
+      editAttemptCount,
+      editFaultCount,
+      blindEditRetryCount,
+      toolFaultCount,
+      toolFaultLabel,
+      verifyFailCount,
+      verifyFailStreak: turnVerifyFailStreak,
+      amnesiaReadCount,
+      sameRegionReworkCount,
+      oscillationRevertCount,
+      maxSameFileTurnEdits: sameRegionReworkCount,
+      readOnlyStreak: turnReadOnlyStreak,
+      identicalToolStreak,
+      cleanVerifyPass,
+      isCodeEditStep,
+      isMutationStep,
+      inExecutionPhase: stepInExecutionPhase,
+      justSwitchedExecPhase,
+      hasThinkingText,
+      thinkingTextLen,
+      wasCanceled,
+      outputRepeatRatio,
+      userRejectedTurn: false,
+      confirmedRollback: false,
+    };
+
+    justSwitchedExecPhase = false;
+    if (triggersExecPhaseNext) {
+      inExecutionPhase = true;
+    } else if (exitsExecPhaseNow) {
+      inExecutionPhase = false;
+    }
+
     result.push({
       stepIndex,
       isCompactionStep,
@@ -1378,6 +2128,7 @@ export function extractModelSteps(rawSteps = [], generatorMetadata = []) {
       ...(stepIsTurnStart && stepTurnPrompt ? { turnPrompt: stepTurnPrompt } : {}),
       ...(stepIsTurnStart && stepTurnPromptClean ? { turnPromptClean: stepTurnPromptClean } : {}),
       ...(stepIsTurnStart ? { turnHasMedia: stepTurnHasMedia, turnMediaOnly: stepTurnMediaOnly } : {}),
+      healthSignals,
     });
   });
 

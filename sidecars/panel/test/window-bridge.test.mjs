@@ -1389,19 +1389,20 @@ test('Compiled app.js mounts dual Shadow DOM hosts, tracks /c/<uuid> routes, pro
     const allPanes = popoverEl.querySelectorAll('.view-pane');
     const settingsRoot = popoverEl.querySelector('.settings-view-root');
     const subNavBtns = settingsRoot.querySelector('.settings-subnav-bar').querySelectorAll('.seg-btn');
-    assert.deepEqual(subNavBtns.map((button) => button.textContent), ['常规', '结构', '其他']);
+    assert.deepEqual(subNavBtns.map((button) => button.textContent), ['常规', '结构', '其他', '模型检测']);
     assert.match(
       stylesCss,
       /\.settings-subnav-bar\s+\.segmented\s*\{[^}]*grid-auto-flow:\s*column;[^}]*grid-auto-columns:\s*minmax\(0,\s*1fr\);/,
       'Settings subnav uses auto-sized equal columns regardless of visible tab count'
     );
-    const [generalPane, structurePane, otherPane] = settingsRoot.querySelectorAll('.settings-tab-stack');
+    const [generalPane, structurePane, otherPane, detectorPane] = settingsRoot.querySelectorAll('.settings-tab-stack');
     const thirdNavBar = settingsRoot.querySelector('.settings-thirdnav-bar');
     assert.ok(thirdNavBar, '3rd-level structure menu bar mounted in SettingsView');
     assert.equal(thirdNavBar.hasAttribute('hidden'), true, '3rd-level menu hidden when General tab is active');
     assert.equal(generalPane.hasAttribute('hidden'), false, 'General tab active by default');
     assert.equal(structurePane.hasAttribute('hidden'), true);
     assert.equal(otherPane.hasAttribute('hidden'), true);
+    assert.equal(detectorPane.hasAttribute('hidden'), true);
 
     // --- Tab 0: 常规 (languageSwitch, themeAccent, fontScaleSwitch, modernUiSwitch, pluginUpdateMode) ---
     const generalSegControls = generalPane.querySelectorAll('.segmented');

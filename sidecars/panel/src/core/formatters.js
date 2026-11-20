@@ -213,12 +213,46 @@ export function buildStepAnomalyDiagnostic(st) {
       danger: Boolean(ev.terminal || ev.kind === 'rate_limit' || ev.kind === 'auth_or_model'),
     };
   });
+  if (st?.stepHealthDetail) {
+    rows.push({
+      text: st.stepHealthBadge ? `[${st.stepHealthBadge}]` : t('steps.healthDiagLabel'),
+      detail: st.stepHealthDetail,
+      mono: false,
+      danger: st.stepHealthLevel === 'critical',
+    });
+  }
   return {
     title,
     sub,
     rows,
     hint: '',
-    severity: a.severity === 'danger' ? 'danger' : 'warn',
+    severity:
+      a.severity === 'danger' || st?.stepHealthLevel === 'critical' ? 'danger' : 'warn',
+  };
+}
+
+export function buildStepHealthDiagnostic(st) {
+  if (!st || typeof st !== 'object') return null;
+  const lvl = st.stepHealthLevel;
+  if (!lvl || lvl === 'healthy' || !st.stepHealthDetail) return null;
+  const badge = st.stepHealthBadge || t('steps.healthDiagLabel');
+  const title = `#${Number(st.stepIndex ?? 0)} · ${badge}`;
+  const details = String(st.stepHealthDetail)
+    .split(' · ')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const rows = details.map((d) => ({
+    text: d,
+    detail: '',
+    mono: false,
+    danger: lvl === 'critical',
+  }));
+  return {
+    title,
+    sub: st.turnIndex ? t('steps.healthTurnSub', { turn: st.turnIndex, state: st.turnHealthStateLabel || '' }) : '',
+    rows,
+    hint: st.cacheNote || st.infraNote || '',
+    severity: lvl === 'critical' ? 'danger' : lvl === 'notice' ? 'notice' : 'warn',
   };
 }
 
@@ -1067,4 +1101,38 @@ export function buildDeterministicModelColorMap(models = []) {
   }
 
   return colorMap;
+}
+
+/**
+ * Splits a model identifier into a shrinkable prefix (`head`) and a preserved distinguishing
+ * suffix (`tail`) so narrow step tables keep critical endings (`-carbon`, `-high`, `·压缩`) visible
+ * while guaranteeing `head + tail === normalizedStr`.
+ *
+ * @param {unknown} rawText
+ * @returns {{ head: string, tail: string }}
+ */
+export function splitModelHeadTail(rawText) {
+  const str = String(rawText ?? '').replace(/[\r\n]+/g, ' ');
+  if (str.length <= 10) {
+    return { head: '', tail: str };
+  }
+  const parenMatch = str.match(/^(.+?\s+)(\([^()]+\)(?:·(?:压缩|compact))?)$/i);
+  if (parenMatch && parenMatch[2].length <= 18) {
+    return { head: parenMatch[1], tail: parenMatch[2] };
+  }
+  const parts = str.match(/[^-_/\s]+[-_/\s]*/g);
+  if (!parts || parts.length <= 1) {
+    return { head: str.slice(0, -9), tail: str.slice(-9) };
+  }
+  let tail = parts[parts.length - 1];
+  let idx = parts.length - 2;
+  while (idx >= 1 && tail.length + parts[idx].length <= 10) {
+    tail = parts[idx] + tail;
+    idx -= 1;
+  }
+  const head = parts.slice(0, idx + 1).join('');
+  if (!head) {
+    return { head: str.slice(0, -9), tail: str.slice(-9) };
+  }
+  return { head, tail };
 }

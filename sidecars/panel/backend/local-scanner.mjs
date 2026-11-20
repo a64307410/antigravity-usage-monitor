@@ -824,14 +824,25 @@ function loadOfflineTranscriptConversation(conv, diskFiles, externalByLower, loc
           type: sq.type,
           status: sq.status,
           plannerResponse: {
-            response: typeof tLine?.content === 'string' ? tLine.content : '',
-            thinking: typeof tLine?.thinking === 'string' ? tLine.thinking : '',
-            toolCalls: Array.isArray(tLine?.tool_calls) ? tLine.tool_calls : [],
+            ...(sq.plannerResponse || {}),
+            ...(typeof tLine?.content === 'string' && tLine.content ? { response: tLine.content } : {}),
+            ...(typeof tLine?.thinking === 'string' && tLine.thinking ? { thinking: tLine.thinking } : {}),
+            ...(Array.isArray(tLine?.tool_calls) && tLine.tool_calls.length > 0
+              ? { toolCalls: tLine.tool_calls }
+              : {}),
           },
           metadata: {
             ...sq.metadata,
             modelUsage: mu,
           },
+        });
+      } else if (sq.metadata?.toolCall) {
+        sqliteRawSteps.push({
+          type: sq.type,
+          status: sq.status,
+          ...(typeof tLine?.content === 'string' && tLine.content ? { content: tLine.content } : {}),
+          ...(typeof tLine?.error === 'string' && tLine.error ? { error: tLine.error } : {}),
+          metadata: sq.metadata,
         });
       }
     }
@@ -2000,7 +2011,7 @@ export async function enumerateAndSyncConversations({
               turnRailTelemetry: true,
               wakeupTurnTelemetry: true,
               contextGroupsTelemetry: 2,
-              anomalyTelemetry: 1,
+              anomalyTelemetry: 2,
               steps: stepsWithOwners,
               subagentRefs,
             };
@@ -2038,7 +2049,7 @@ export async function enumerateAndSyncConversations({
               !prev.speedClearedTelemetry ||
               !prev.turnRailTelemetry ||
               !prev.contextGroupsTelemetry ||
-              !prev.anomalyTelemetry ||
+              (prev.anomalyTelemetry || 0) < 2 ||
               metaChanged ||
               !isDeepStrictEqual(prev.steps, stepsWithOwners);
 
@@ -2107,7 +2118,7 @@ export async function enumerateAndSyncConversations({
                   speedClearedTelemetry: true,
                   turnRailTelemetry: true,
                   contextGroupsTelemetry: 2,
-                  anomalyTelemetry: 1,
+                  anomalyTelemetry: 2,
                   steps: offlineStepsWithOwners,
                   subagentRefs: offlineFallback.subagentRefs,
                 };
@@ -2253,7 +2264,7 @@ export async function enumerateAndSyncConversations({
     if (!cached.contextLimitTelemetry && lowerCid === contextTelemetryCascadeId) return true;
     if (
       (!cached.turnRailTelemetry ||
-        !cached.anomalyTelemetry ||
+        (cached.anomalyTelemetry || 0) < 2 ||
         hasMissingTurnRailFields(cached) ||
         needsWakeupTurnRefresh(conv, cached) ||
         hasDroppedContextGroups(cached)) &&
@@ -2439,7 +2450,7 @@ export async function enumerateAndSyncConversations({
             !hasMissingStepFields(existingSubCache) &&
             (!isSelectedSubFamily ||
               (Boolean(existingSubCache.turnRailTelemetry) &&
-                Boolean(existingSubCache.anomalyTelemetry) &&
+                (existingSubCache.anomalyTelemetry || 0) >= 2 &&
                 !hasMissingTurnRailFields(existingSubCache) &&
                 !needsWakeupTurnRefresh(subConv, existingSubCache) &&
                 !hasDroppedContextGroups(existingSubCache)));
@@ -2766,21 +2777,37 @@ export async function enumerateAndSyncConversations({
       (a.groupLastModifiedMs || a.lastModifiedMs || 0)
   );
 
-  // 选定当前活跃根会话：若指定了有效 requestedConvId（支持根会话 ID 或子代理 ID）则优先使用，否则取最近修改的根会话
+  // 选定当前活跃根会话：若指定了有效非探针 requestedConvId（支持根会话 ID 或子代理 ID）则优先使用，否则取最近修改的非探针根会话
+  const isProbeConv = (c) => String(c?.title || '').trim().startsWith('[模型检测探针]');
+  const reqIsKnownProbe = Boolean(
+    reqLower &&
+      conversations.some(
+        (c) =>
+          isProbeConv(c) &&
+          (c.cascadeId.toLowerCase() === reqLower ||
+            (c.subagents || []).some((s) => s.cascadeId.toLowerCase() === reqLower))
+      )
+  );
+  const matchedReqConv =
+    reqLower &&
+    !reqIsKnownProbe &&
+    (conversations.find((c) => c.cascadeId.toLowerCase() === reqLower) ||
+      conversations.find((c) =>
+        (c.subagents || []).some((s) => s.cascadeId.toLowerCase() === reqLower)
+      ));
   const activeConvSummary =
-    (reqLower &&
-      (conversations.find((c) => c.cascadeId.toLowerCase() === reqLower) ||
-        conversations.find((c) =>
-          (c.subagents || []).some((s) => s.cascadeId.toLowerCase() === reqLower)
-        ))) ||
+    matchedReqConv ||
+    conversations.find((c) => !isProbeConv(c)) ||
     conversations[0] ||
     null;
   const safeReqId =
-    requestedConvId && !/[\\/]|\.\./.test(String(requestedConvId)) ? requestedConvId : null;
+    !reqIsKnownProbe && requestedConvId && !/[\\/]|\.\./.test(String(requestedConvId))
+      ? requestedConvId
+      : null;
   const activeCascadeId = activeConvSummary?.cascadeId || safeReqId || null;
 
   return {
-    conversations,
+    conversations: conversations.filter((c) => !isProbeConv(c)),
     activeConvSummary,
     activeCascadeId,
   };

@@ -21,6 +21,7 @@ test('pack-release-zip ships only runtime-essential files, excludes dev bloat, a
     'pricing-catalog.json',
     'LICENSE',
     'assets/logo.svg',
+    'agents/model-detector-probe.md',
     'sidecars/panel/sidecar.json',
     'sidecars/panel/index.html',
     'sidecars/panel/app.js',
@@ -31,6 +32,7 @@ test('pack-release-zip ships only runtime-essential files, excludes dev bloat, a
     'sidecars/panel/standalone.mjs',
     'sidecars/panel/cli-statusline.mjs',
     'sidecars/panel/trajectory-metrics.mjs',
+    'sidecars/panel/vendor/seed-bank.zip',
     'sidecars/panel/backend/api-actions.mjs',
     'sidecars/panel/backend/account-credentials.ps1',
     'sidecars/panel/shared/settings-normalization.mjs',
@@ -64,8 +66,8 @@ test('pack-release-zip ships only runtime-essential files, excludes dev bloat, a
   assert.ok(existsSync(zipPath));
   assert.ok(summary.zipBytes > 100 * 1024, 'ZIP should contain compiled assets and backend');
   assert.ok(
-    summary.zipBytes < 750 * 1024,
-    `Runtime-only ZIP should stay compact (<750 KB), got ${(summary.zipBytes / 1024).toFixed(1)} KB`
+    summary.zipBytes < 6 * 1024 * 1024,
+    `Runtime-only ZIP should stay compact (<6 MB with seed-bank.zip), got ${(summary.zipBytes / 1024).toFixed(1)} KB`
   );
 
   // Extract via OS-native expander (same path used by plugin-updater.mjs, where extractDir already exists)

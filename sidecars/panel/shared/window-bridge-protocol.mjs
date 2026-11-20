@@ -28,6 +28,11 @@ export const BRIDGE_API_ROUTE_DEFS = Object.freeze([
   Object.freeze({ path: '/api/cloud-sync', method: 'POST', action: 'cloud_sync' }),
   Object.freeze({ path: '/api/plugin-update', method: 'POST', action: 'plugin_update' }),
   Object.freeze({ path: '/api/bridge/relaunch', method: 'POST', action: 'bridge_relaunch' }),
+  Object.freeze({ path: '/api/clipboard', method: 'POST', action: 'clipboard' }),
+  Object.freeze({ path: '/api/model-detector/status', method: 'GET', action: 'model_detector_status' }),
+  Object.freeze({ path: '/api/model-detector/detect', method: 'POST', action: 'model_detector_start' }),
+  Object.freeze({ path: '/api/model-detector/cancel', method: 'POST', action: 'model_detector_cancel' }),
+  Object.freeze({ path: '/api/model-detector/sync', method: 'POST', action: 'model_detector_sync' }),
 ]);
 
 export const BRIDGE_API_PATHS = Object.freeze(BRIDGE_API_ROUTE_DEFS.map((r) => r.path));

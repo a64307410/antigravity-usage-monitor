@@ -310,6 +310,7 @@ export const StepsDetailView = defineComponent({
       syncTableHeaderColumns,
       renderStepTable,
       refreshViewport: refreshStepTableViewport,
+      scrollToStep,
     } = stepTableWidget.refs;
     stepsScroll = CustomScrollbar({
       contentEl: stepsTablePane,
@@ -807,9 +808,12 @@ export const StepsDetailView = defineComponent({
       const tableSteps = onlyAnomalies
         ? modelFilteredSteps.filter((st) => {
             const a = st?.anomaly;
-            if (!a || !(Number(a.count) > 0)) return false;
+            const hasHealthWarn =
+              st?.stepHealthLevel === 'warn' || st?.stepHealthLevel === 'critical';
+            const hasRawAnomaly = Boolean(a && Number(a.count) > 0);
+            if (!hasRawAnomaly && !hasHealthWarn) return false;
             if (anomalyKindFilter) {
-              return Number(a.kinds?.[anomalyKindFilter] || 0) > 0;
+              return hasRawAnomaly && Number(a.kinds?.[anomalyKindFilter] || 0) > 0;
             }
             return true;
           })
@@ -1432,10 +1436,37 @@ export const StepsDetailView = defineComponent({
     let prevScope = uiStore.getState().selectedAgentScope;
     let prevActiveView = getVisibleMonitorView();
 
+    function consumePendingStepJump() {
+      const target = uiStore.getState().highlightedStepTarget;
+      if (!target || getVisibleMonitorView() !== 'steps') return;
+      if (uiStore.getState().stepsSubTab !== 'steps') {
+        uiStore.setState({ stepsSubTab: 'steps' });
+      }
+      if (onlyAnomalies || selectedTableModels[0] !== '__all__') {
+        onlyAnomalies = false;
+        anomalyKindFilter = '';
+        selectedTableModels = ['__all__'];
+        if (latestSlice) renderStepsData(latestSlice);
+      }
+      uiStore.setState({ highlightedStepTarget: null });
+      const runJump = () => {
+        scrollToStep(target.stepIndex, target.agentId || '');
+        stepsScroll.refresh();
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(runJump);
+      } else {
+        runJump();
+      }
+    }
+
     const unsubView = uiStore.subscribe(
       (st) => ({
         activeView: getVisibleMonitorView(st),
         selectedAgentScope: st.selectedAgentScope,
+        jumpKey: st.highlightedStepTarget
+          ? `${st.highlightedStepTarget.stepIndex}:${st.highlightedStepTarget.ts || 0}`
+          : '',
       }),
       (uiSlice) => {
         const scopeChanged = uiSlice.selectedAgentScope !== prevScope;
@@ -1456,6 +1487,9 @@ export const StepsDetailView = defineComponent({
         if ((isDirty || scopeChanged || viewEntered) && latestSlice) {
           isDirty = false;
           renderStepsData(latestSlice);
+        }
+        if (uiSlice.jumpKey) {
+          consumePendingStepJump();
         }
       }
     );

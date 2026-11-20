@@ -26,6 +26,7 @@ import {
   decodeProtoDurationSlice,
   decodeProtoMapStringEntry,
   decodeProtoTimestampSlice,
+  decodeUtf8Slice,
   readProtoString,
   readProtoVarint,
   readSubEnd,
@@ -1253,7 +1254,13 @@ function decodeProtoToolCallSlice(buf, state, end, includeArgs = true) {
     } else if (fn === 2 && wt === 2) {
       tc.name = readProtoString(buf, state, end);
     } else if (fn === 3 && wt === 2) {
-      if (includeArgs) {
+      if (includeArgs === 'bounded') {
+        const sEnd = readSubEnd(buf, state, end);
+        const maxSliceEnd = Math.min(sEnd, state.off + 6144);
+        tc.argumentsJson =
+          maxSliceEnd > state.off ? decodeUtf8Slice(buf, state.off, maxSliceEnd) : '';
+        state.off = sEnd;
+      } else if (includeArgs) {
         tc.argumentsJson = readProtoString(buf, state, end);
       } else {
         skipProtoField(buf, state, wt, end);
@@ -1392,11 +1399,22 @@ function decodeProtoPlannerResponseSlice(buf, state, end, keepFullText) {
           else pr.rawThinking = str;
         }
       } else {
-        skipProtoField(buf, state, wt, end);
+        const sEnd = readSubEnd(buf, state, end);
+        if (sEnd > state.off && hasNonWhitespaceUtf8(buf, state.off, sEnd)) {
+          pr.thinkingByteLen = Math.max(pr.thinkingByteLen || 0, sEnd - state.off);
+        }
+        state.off = sEnd;
       }
     } else if (fn === 7 && wt === 2) {
       if (!toolCalls) toolCalls = [];
-      toolCalls.push(decodeProtoToolCallSlice(buf, state, readSubEnd(buf, state, end), keepFullText));
+      toolCalls.push(
+        decodeProtoToolCallSlice(
+          buf,
+          state,
+          readSubEnd(buf, state, end),
+          keepFullText ? true : 'bounded'
+        )
+      );
     } else if (fn === 11 && wt === 2) {
       const dur = decodeProtoDurationSlice(buf, state, readSubEnd(buf, state, end));
       if (dur) pr.thinkingDuration = dur;
