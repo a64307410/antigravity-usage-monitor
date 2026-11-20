@@ -763,10 +763,14 @@ export function evaluateAgentInferenceHealth(steps = [], options = {}) {
       Number.isFinite(st.thinkingDurationSec) && Number.isFinite(ttftVal)
         ? Math.max(0, st.thinkingDurationSec - ttftVal)
         : 0;
+    const rawThinkShare = outTok > 0 ? thinkTok / outTok : 0;
+    const adequateRelativeThink = outTok < 3000 || rawThinkShare >= 0.08;
     const hasDeepThought =
-      thinkTok >= 300 ||
-      thinkTextLen >= 900 ||
-      (postTtftThinkSec >= 6 && thinkTok >= 180);
+      !isTtftStall &&
+      adequateRelativeThink &&
+      (thinkTok >= 300 ||
+        thinkTextLen >= 1200 ||
+        (postTtftThinkSec >= 6 && thinkTok >= 180));
 
     const inheritedTurnPlan =
       !hasUpstreamShock &&

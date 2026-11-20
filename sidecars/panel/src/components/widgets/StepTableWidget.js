@@ -14,12 +14,15 @@ import {
   patchText,
 } from '../../core/domPatch.js';
 import {
+  buildModelTtftBaselines,
   buildStepAnomalyDiagnostic,
   buildStepCompactionDiagnostic,
   buildStepHealthDiagnostic,
   resolveModelDisplayInfo,
   speedReasonText,
 } from '../../core/formatters.js';
+import { copyWithTimedFeedback } from '../../core/httpClient.js';
+import { createSvgIcon, patchSvgIcon } from '../../icons/SvgIcon.js';
 import { getEffectiveLocale, t } from '../../i18n/index.js';
 import {
   DEFAULT_STEP_COLUMN_KEYS,
@@ -424,12 +427,42 @@ export const StepTableWidget = defineComponent({
     ]);
     const stepsTablePane = h('div', { className: 'table-viewport is-step-table' }, [stepsTableEl]);
 
-    const turnTipEl = h('div', {
-      className: 'turn-prompt-tip',
-      role: 'tooltip',
-      hidden: true,
-    });
-    const hideTurnTip = () => patchAttr(turnTipEl, 'hidden', true);
+    const turnCopyTimer = { id: null };
+    const anomalyCopyTimer = { id: null };
+    let activeTurnPromptText = '';
+    let activeAnomalyCopyAction = null;
+    let pinnedTipKind = '';
+    let pinnedAnchorEl = null;
+
+    const turnTipTextEl = h('span', { className: 'turn-tip-text' });
+    const turnTipCopyIcon = createSvgIcon('copy', { size: 11 });
+    const turnTipCopyBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'turn-tip-icon-copy',
+        'aria-label': t('steps.copyPromptBtn'),
+        title: t('steps.copyPromptBtn'),
+        onclick: async (e) => {
+          e?.stopPropagation?.();
+          if (!activeTurnPromptText) return;
+          await copyWithTimedFeedback(activeTurnPromptText, turnCopyTimer, (copied) => {
+            patchSvgIcon(turnTipCopyIcon, copied ? 'check' : 'copy');
+            patchClasses(turnTipCopyBtn, { 'is-copied': copied });
+          });
+        },
+      },
+      [turnTipCopyIcon]
+    );
+    const turnTipEl = h(
+      'div',
+      {
+        className: 'turn-prompt-tip',
+        role: 'tooltip',
+        hidden: true,
+      },
+      [turnTipTextEl, turnTipCopyBtn]
+    );
 
     const anomalyTipTitleEl = h('div', { className: 'step-anomaly-tip-title' });
     const anomalyTipSubEl = h('div', { className: 'step-anomaly-tip-sub text-mono', hidden: true });
@@ -439,6 +472,31 @@ export const StepTableWidget = defineComponent({
     ]);
     const anomalyTipListEl = h('div', { className: 'step-anomaly-tip-list' });
     const anomalyTipHintEl = h('div', { className: 'step-anomaly-tip-hint', hidden: true });
+    const anomalyTipCopyIcon = createSvgIcon('copy', { size: 11 });
+    const anomalyTipCopyLabel = h('span');
+    const anomalyTipCopyBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'turn-tip-copy-btn',
+        onclick: async (e) => {
+          e?.stopPropagation?.();
+          const act = activeAnomalyCopyAction;
+          if (!act?.copyText) return;
+          await copyWithTimedFeedback(act.copyText, anomalyCopyTimer, (copied) => {
+            patchSvgIcon(anomalyTipCopyIcon, copied ? 'check' : 'copy');
+            patchText(anomalyTipCopyLabel, copied ? act.toast || t('health.copiedToast') : act.label || '');
+            patchClasses(anomalyTipCopyBtn, { 'is-copied': copied });
+          });
+        },
+      },
+      [anomalyTipCopyIcon, anomalyTipCopyLabel]
+    );
+    const anomalyTipActionsEl = h(
+      'div',
+      { className: 'step-anomaly-tip-actions', hidden: true },
+      [anomalyTipCopyBtn]
+    );
     const anomalyTipEl = h(
       'div',
       {
@@ -446,9 +504,61 @@ export const StepTableWidget = defineComponent({
         role: 'tooltip',
         hidden: true,
       },
-      [anomalyTipHeadEl, anomalyTipListEl, anomalyTipHintEl]
+      [anomalyTipHeadEl, anomalyTipListEl, anomalyTipHintEl, anomalyTipActionsEl]
     );
-    const hideAnomalyTip = () => patchAttr(anomalyTipEl, 'hidden', true);
+
+    const hideTurnTip = (evOrForce) => {
+      if (evOrForce === true) {
+        if (pinnedTipKind === 'turn') {
+          pinnedTipKind = '';
+          pinnedAnchorEl = null;
+        }
+        patchAttr(turnTipEl, 'hidden', true);
+        return;
+      }
+      if (pinnedTipKind === 'turn') return;
+      if (
+        evOrForce &&
+        typeof evOrForce === 'object' &&
+        evOrForce.relatedTarget &&
+        turnTipEl.contains?.(evOrForce.relatedTarget)
+      ) {
+        return;
+      }
+      patchAttr(turnTipEl, 'hidden', true);
+    };
+
+    const hideAnomalyTip = (evOrForce) => {
+      if (evOrForce === true) {
+        if (pinnedTipKind === 'anomaly') {
+          pinnedTipKind = '';
+          pinnedAnchorEl = null;
+        }
+        patchAttr(anomalyTipEl, 'hidden', true);
+        return;
+      }
+      if (pinnedTipKind === 'anomaly') return;
+      if (
+        evOrForce &&
+        typeof evOrForce === 'object' &&
+        evOrForce.relatedTarget &&
+        anomalyTipEl.contains?.(evOrForce.relatedTarget)
+      ) {
+        return;
+      }
+      patchAttr(anomalyTipEl, 'hidden', true);
+    };
+
+    turnTipEl.onmouseleave = (ev) => {
+      if (pinnedTipKind === 'turn') return;
+      if (ev?.relatedTarget && pinnedAnchorEl?.contains?.(ev.relatedTarget)) return;
+      patchAttr(turnTipEl, 'hidden', true);
+    };
+    anomalyTipEl.onmouseleave = (ev) => {
+      if (pinnedTipKind === 'anomaly') return;
+      if (ev?.relatedTarget && pinnedAnchorEl?.contains?.(ev.relatedTarget)) return;
+      patchAttr(anomalyTipEl, 'hidden', true);
+    };
 
     const standaloneHostEl = standalone
       ? h('div', { className: 'step-table-preview-host' }, [
@@ -498,24 +608,31 @@ export const StepTableWidget = defineComponent({
       tipEl.style.left = `${leftPx}px`;
     }
 
-    function showTurnTip(anchorCell, promptText) {
+    function showTurnTip(anchorCell, promptText, { force = false } = {}) {
+      if (!force && pinnedTipKind && pinnedTipKind !== 'turn') return;
       const text = String(promptText || '').trim();
       if (!anchorCell || !text) {
-        hideTurnTip();
+        hideTurnTip(force ? true : undefined);
         return;
       }
-      hideAnomalyTip();
-      patchText(turnTipEl, text);
+      hideAnomalyTip(true);
+      activeTurnPromptText = text;
+      patchText(turnTipTextEl, text);
+      patchSvgIcon(turnTipCopyIcon, 'copy');
+      patchClasses(turnTipCopyBtn, { 'is-copied': false });
+      patchAttr(turnTipCopyBtn, 'aria-label', t('steps.copyPromptBtn'));
+      patchAttr(turnTipCopyBtn, 'title', t('steps.copyPromptBtn'));
       patchAttr(turnTipEl, 'hidden', false);
       positionFloatingTip(turnTipEl, anchorCell);
     }
 
-    function showAnomalyTip(anchorEl, diag) {
+    function showAnomalyTip(anchorEl, diag, { force = false } = {}) {
+      if (!force && pinnedTipKind && pinnedTipKind !== 'anomaly') return;
       if (!anchorEl || !diag || !diag.title) {
-        hideAnomalyTip();
+        hideAnomalyTip(force ? true : undefined);
         return;
       }
-      hideTurnTip();
+      hideTurnTip(true);
       patchClasses(anomalyTipEl, {
         'is-danger': diag.severity === 'danger',
         'is-notice': diag.severity === 'notice',
@@ -552,6 +669,14 @@ export const StepTableWidget = defineComponent({
 
       patchAttr(anomalyTipHintEl, 'hidden', !diag.hint);
       if (diag.hint) patchText(anomalyTipHintEl, diag.hint);
+
+      activeAnomalyCopyAction = diag.copyAction || null;
+      patchAttr(anomalyTipActionsEl, 'hidden', !activeAnomalyCopyAction);
+      if (activeAnomalyCopyAction) {
+        patchSvgIcon(anomalyTipCopyIcon, 'copy');
+        patchText(anomalyTipCopyLabel, activeAnomalyCopyAction.label || '');
+        patchClasses(anomalyTipCopyBtn, { 'is-copied': false });
+      }
 
       patchAttr(anomalyTipEl, 'hidden', false);
       positionFloatingTip(anomalyTipEl, anchorEl);
@@ -731,7 +856,7 @@ export const StepTableWidget = defineComponent({
 
     function leaveStepCell(event) {
       const entry = hoverRows.get(this);
-      hideTurnTip();
+      hideTurnTip(event);
       if (entry?.rowDiagGetter && entry.tr && event?.relatedTarget && entry.tr.contains?.(event.relatedTarget)) {
         showAnomalyTip(this, entry.rowDiagGetter());
       }
@@ -742,6 +867,7 @@ export const StepTableWidget = defineComponent({
       cell.onmouseenter = null;
       cell.onmousemove = null;
       cell.onmouseleave = null;
+      cell.onclick = null;
     }
 
     function calibrateRowHeights() {
@@ -1302,10 +1428,21 @@ export const StepTableWidget = defineComponent({
             tr.onmouseenter = () => {
               showAnomalyTip(anchorEl, rowDiagGetter());
             };
-            tr.onmouseleave = hideAnomalyTip;
+            tr.onmouseleave = (ev) => hideAnomalyTip(ev);
+            tr.onclick = (ev) => {
+              if (ev?.target === refs.agentBadgeEl) return;
+              if (pinnedTipKind === 'anomaly' && pinnedAnchorEl === anchorEl) {
+                hideAnomalyTip(true);
+              } else {
+                pinnedTipKind = 'anomaly';
+                pinnedAnchorEl = anchorEl;
+                showAnomalyTip(anchorEl, rowDiagGetter(), { force: true });
+              }
+            };
           } else {
             tr.onmouseenter = null;
             tr.onmouseleave = null;
+            tr.onclick = null;
           }
 
           patchAttr(refs.railEl, 'hidden', !showRowRail);
@@ -1337,6 +1474,20 @@ export const StepTableWidget = defineComponent({
             hoverTd.onmouseenter = useWholeCellTurnTip ? enterStepCell : null;
             hoverTd.onmousemove = useWholeCellTurnTip ? moveInStepCell : moveAlongTurnRail;
             hoverTd.onmouseleave = leaveStepCell;
+            hoverTd.onclick = (ev) => {
+              if (ev?.target === refs.agentBadgeEl) return;
+              const rect = hoverTd.getBoundingClientRect?.();
+              const relX = rect ? (ev?.clientX ?? 0) - rect.left : 0;
+              if (!useWholeCellTurnTip && relX > 18) return;
+              ev?.stopPropagation?.();
+              if (pinnedTipKind === 'turn' && pinnedAnchorEl === hoverTd) {
+                hideTurnTip(true);
+              } else {
+                pinnedTipKind = 'turn';
+                pinnedAnchorEl = hoverTd;
+                showTurnTip(hoverTd, prompt, { force: true });
+              }
+            };
           }
 
           if (enteringRowKeys?.has(item.rowKey)) {
@@ -1395,8 +1546,8 @@ export const StepTableWidget = defineComponent({
     }
 
     function onPaneScroll() {
-      hideTurnTip();
-      hideAnomalyTip();
+      hideTurnTip(true);
+      hideAnomalyTip(true);
       if (!activeDataset?.isVirtualized) return;
       if (typeof requestAnimationFrame === 'function') {
         if (scrollRafId) return;
@@ -1409,9 +1560,9 @@ export const StepTableWidget = defineComponent({
       }
     }
 
-    function onTbodyLeave() {
-      hideTurnTip();
-      hideAnomalyTip();
+    function onTbodyLeave(ev) {
+      hideTurnTip(ev);
+      hideAnomalyTip(ev);
     }
 
     stepsTablePane.addEventListener('scroll', onPaneScroll, { passive: true });
@@ -1528,6 +1679,7 @@ export const StepTableWidget = defineComponent({
       syncTableHeaderColumns(colKeys, { stepTokenComboFormat: normTokenFmt });
 
       const showAgentBadge = Boolean(hasSubagents && showStepAgentBadge);
+      const ttftBaselines = buildModelTtftBaselines(allConversationSteps || tableSteps);
       const cellCtx = {
         hasSubagents,
         showAgentBadge,
@@ -1536,6 +1688,7 @@ export const StepTableWidget = defineComponent({
         effectiveScopes,
         scopeSigKey: effectiveScopes.join(','),
         displaySettings,
+        ttftBaselines,
         onSelectAgentScopes,
       };
 
@@ -1681,6 +1834,14 @@ export const StepTableWidget = defineComponent({
     }
 
     onCleanup(() => {
+      if (turnCopyTimer.id) {
+        clearTimeout(turnCopyTimer.id);
+        turnCopyTimer.id = null;
+      }
+      if (anomalyCopyTimer.id) {
+        clearTimeout(anomalyCopyTimer.id);
+        anomalyCopyTimer.id = null;
+      }
       clearFlashState();
       stepsTablePane.removeEventListener('scroll', onPaneScroll);
       stepsTbody.removeEventListener('mouseleave', onTbodyLeave);

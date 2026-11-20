@@ -8,7 +8,8 @@
 import { resolveSettingsModernUi } from '../core/appearance.js';
 import { defineComponent } from '../core/component.js';
 import {
-  h,
+   h,
+  isEventInside,
   patchAttr,
   patchClasses,
   patchKeyedList,
@@ -29,6 +30,7 @@ import {
   resolveModelAnomalySummary,
   resolveModelDisplayInfo,
 } from '../core/formatters.js';
+import { createSvgIcon } from '../icons/SvgIcon.js';
 import { getEffectiveLocale, i18nStore, t } from '../i18n/index.js';
 import {
   formatAgentLabel,
@@ -479,6 +481,27 @@ export const StepsDetailView = defineComponent({
     });
     modelsScroll.el.setAttribute('hidden', '');
 
+    const quickAnomalyLabelEl = h('span', {
+      text: t('steps.quickAnomalyBtn', { count: 0 }),
+    });
+    const quickAnomalyBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'steps-anomaly-filter-btn',
+        hidden: true,
+        title: t('steps.quickAnomalyTitle'),
+        onclick: () => {
+          hideTurnTip(true);
+          hideAnomalyTip(true);
+          onlyAnomalies = !onlyAnomalies;
+          anomalyKindFilter = '';
+          if (latestSlice) renderStepsData(latestSlice);
+        },
+      },
+      [createSvgIcon('warning', { size: 11 }), quickAnomalyLabelEl]
+    );
+
     const headerFiltersEl = h('div', { className: 'steps-header-filters', hidden: true }, [
       inlineScopeSelect.el,
       stepsModelSelect.el,
@@ -489,11 +512,17 @@ export const StepsDetailView = defineComponent({
       {
         className: 'panel',
         style: 'flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative;',
+        onclick: (ev) => {
+          if (!isEventInside(ev, turnTipEl) && !isEventInside(ev, anomalyTipEl)) {
+            hideTurnTip(true);
+            hideAnomalyTip(true);
+          }
+        },
       },
       [
         h('div', { className: 'panel-header steps-panel-header' }, [
           h('div', { className: 'steps-header-controls' }, [
-            subTabSwitch.el,
+            h('div', { className: 'steps-header-left' }, [subTabSwitch.el, quickAnomalyBtn]),
             headerFiltersEl,
           ]),
         ]),
@@ -805,6 +834,24 @@ export const StepsDetailView = defineComponent({
       const modelFilteredSteps = tableModelFilterSet
         ? steps.filter((st) => tableModelFilterSet.has(getStepModelGroupKey(st)))
         : steps;
+      const isStepAnomalousItem = (st) => {
+        const a = st?.anomaly;
+        const hasHealthWarn =
+          st?.stepHealthLevel === 'warn' || st?.stepHealthLevel === 'critical';
+        return Boolean((a && Number(a.count) > 0) || hasHealthWarn);
+      };
+      const totalAnomalousSteps = modelFilteredSteps.filter(isStepAnomalousItem).length;
+      if (totalAnomalousSteps === 0 && onlyAnomalies && !anomalyKindFilter) {
+        onlyAnomalies = false;
+      }
+      const showQuickAnomalyBtn = !showModels && (totalAnomalousSteps > 0 || onlyAnomalies);
+      patchAttr(quickAnomalyBtn, 'hidden', !showQuickAnomalyBtn);
+      if (showQuickAnomalyBtn) {
+        patchClasses(quickAnomalyBtn, { 'is-active': onlyAnomalies });
+        patchText(quickAnomalyLabelEl, t('steps.quickAnomalyBtn', { count: totalAnomalousSteps }));
+        patchAttr(quickAnomalyBtn, 'title', t('steps.quickAnomalyTitle'));
+      }
+
       const tableSteps = onlyAnomalies
         ? modelFilteredSteps.filter((st) => {
             const a = st?.anomaly;

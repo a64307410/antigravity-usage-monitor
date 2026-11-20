@@ -221,6 +221,7 @@ export function buildStepAnomalyDiagnostic(st) {
       danger: st.stepHealthLevel === 'critical',
     });
   }
+  const copyAction = buildStepCopyAction(st);
   return {
     title,
     sub,
@@ -228,7 +229,33 @@ export function buildStepAnomalyDiagnostic(st) {
     hint: '',
     severity:
       a.severity === 'danger' || st?.stepHealthLevel === 'critical' ? 'danger' : 'warn',
+    ...(copyAction ? { copyAction } : {}),
   };
+}
+
+function buildStepCopyAction(st) {
+  if (!st || typeof st !== 'object') return null;
+  const lvl = st.stepHealthLevel;
+  if (!lvl || lvl === 'healthy') return null;
+  const stepNum = Number(st.stepIndex ?? 0);
+  const reason = st.stepHealthDetail || st.stepHealthBadge || '';
+  if (lvl === 'warn' || lvl === 'critical') {
+    return {
+      kind: 'copy',
+      label: t('steps.copyStopLossBtn', { step: stepNum }),
+      copyText: t('steps.copyStopLossText', { step: stepNum, reason }),
+      toast: t('steps.copyStopLossToast'),
+    };
+  }
+  if (lvl === 'notice' && reason) {
+    return {
+      kind: 'copy',
+      label: t('steps.copyReviewBtn', { step: stepNum }),
+      copyText: t('steps.copyReviewText', { step: stepNum, reason }),
+      toast: t('steps.copyReviewToast'),
+    };
+  }
+  return null;
 }
 
 export function buildStepHealthDiagnostic(st) {
@@ -247,12 +274,14 @@ export function buildStepHealthDiagnostic(st) {
     mono: false,
     danger: lvl === 'critical',
   }));
+  const copyAction = buildStepCopyAction(st);
   return {
     title,
     sub: st.turnIndex ? t('steps.healthTurnSub', { turn: st.turnIndex, state: st.turnHealthStateLabel || '' }) : '',
     rows,
     hint: st.cacheNote || st.infraNote || '',
     severity: lvl === 'critical' ? 'danger' : lvl === 'notice' ? 'notice' : 'warn',
+    ...(copyAction ? { copyAction } : {}),
   };
 }
 
@@ -1135,4 +1164,158 @@ export function splitModelHeadTail(rawText) {
     return { head: str.slice(0, -9), tail: str.slice(-9) };
   }
   return { head, tail };
+}
+
+export function formatStepDuration(seconds) {
+  if (seconds == null || !Number.isFinite(Number(seconds)) || Number(seconds) <= 0) {
+    return '—';
+  }
+  const s = Number(seconds);
+  if (s < 60) {
+    return `${s.toFixed(1)}s`;
+  }
+  const roundedSec = Math.round(s);
+  const m = Math.floor(roundedSec / 60);
+  const remS = roundedSec % 60;
+  if (m < 60) {
+    return `${m}m${String(remS).padStart(2, '0')}s`;
+  }
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return `${h}h${String(remM).padStart(2, '0')}m`;
+}
+
+export function formatStepDurationDetail(step) {
+  const total = step?.totalDurationSec ?? step?.streamDurationSec;
+  if (total == null || !Number.isFinite(Number(total)) || Number(total) <= 0) {
+    return step?.isComplete === false ? t('stepCol.dur.generating') : t('stepCol.dur.unavailable');
+  }
+  const parts = [t('stepCol.dur.totalPart', { sec: Number(total).toFixed(2) })];
+  if (Number.isFinite(step?.ttftSec) && step.ttftSec >= 0) {
+    parts.push(t('stepCol.dur.ttftPart', { sec: Number(step.ttftSec).toFixed(2) }));
+  }
+  if (Number.isFinite(step?.thinkingDurationSec) && step.thinkingDurationSec > 0) {
+    parts.push(t('stepCol.dur.thinkPart', { sec: Number(step.thinkingDurationSec).toFixed(2) }));
+  }
+  const stream = step?.nativeStreamSec ?? step?.streamDurationSec;
+  if (Number.isFinite(stream) && stream > 0) {
+    parts.push(t('stepCol.dur.streamPart', { sec: Number(stream).toFixed(2) }));
+  }
+  return parts.join(' · ');
+}
+
+export function resolveStepTtftModelBucket(st) {
+  const raw = String(
+    st?.responseModel || st?.modelUpstream || st?.modelShort || st?.modelKey || 'unknown'
+  )
+    .replace(/·(?:压缩|compact)|\[自动压缩\]/gi, '')
+    .trim()
+    .toLowerCase();
+  return raw || 'unknown';
+}
+
+export function resolveModelTtftPriors(st) {
+  const sig = `${st?.modelKey || ''} ${st?.responseModel || ''} ${st?.modelUpstream || ''} ${st?.modelShort || ''} ${st?.modelLabel || ''}`.toLowerCase();
+  if (
+    /\b(?:flash|lite|haiku|hydrogen|mini)\b|worker-agy/.test(sig) &&
+    !/thinking|carbon|opus/.test(sig)
+  ) {
+    return { tier: 'fast', warnFloor: 5.0, stallFloor: 10.0, prefillPer100k: 1.2 };
+  }
+  if (/\b(?:carbon|orchestrator|opus|thinking|xhigh|high|o1|o3|o4|gpt-5)\b/.test(sig)) {
+    return { tier: 'deep', warnFloor: 18.0, stallFloor: 36.0, prefillPer100k: 3.0 };
+  }
+  return { tier: 'standard', warnFloor: 9.0, stallFloor: 18.0, prefillPer100k: 2.0 };
+}
+
+export function buildModelTtftBaselines(steps = []) {
+  const byBucket = new Map();
+  for (const s of steps || []) {
+    if (!s || s.isCompactionStep || s.isComplete === false) continue;
+    const v = Number(s.ttftSec);
+    if (!Number.isFinite(v) || v < 0) continue;
+    const bucket = resolveStepTtftModelBucket(s);
+    let arr = byBucket.get(bucket);
+    if (!arr) {
+      arr = [];
+      byBucket.set(bucket, arr);
+    }
+    arr.push(v);
+  }
+  const baselines = new Map();
+  for (const [bucket, vals] of byBucket.entries()) {
+    if (vals.length < 3) continue;
+    const sorted = vals.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const medianSec =
+      sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    baselines.set(bucket, { count: sorted.length, medianSec });
+  }
+  return baselines;
+}
+
+export function classifyStepTtft(st, baselinesMap = null) {
+  const ttftNum = Number(st?.ttftSec);
+  if (!Number.isFinite(ttftNum) || ttftNum < 0) {
+    return {
+      hasTtft: false,
+      ttftNum: null,
+      isSlow: false,
+      isStall: false,
+      medianSec: null,
+      warnAt: null,
+      stallAt: null,
+    };
+  }
+  const priors = resolveModelTtftPriors(st);
+  const base = baselinesMap?.get(resolveStepTtftModelBucket(st)) || null;
+  const thinkDur = Number(st?.thinkingDurationSec);
+  const effectiveTtft =
+    Number.isFinite(thinkDur) && thinkDur > 1 && ttftNum >= thinkDur * 0.9
+      ? Math.max(0, ttftNum - thinkDur * 0.85)
+      : ttftNum;
+  const fresh100k = Math.max(0, Number(st?.inputTokens || 0)) / 100000;
+  const prefillAdd = fresh100k * priors.prefillPer100k;
+  const medianSec = base?.medianSec ?? null;
+  const warnAt = Math.max(
+    priors.warnFloor + prefillAdd,
+    medianSec !== null ? medianSec * 2.0 : 0
+  );
+  const stallAt = Math.max(
+    priors.stallFloor + prefillAdd * 1.5,
+    medianSec !== null ? medianSec * 3.2 : 0
+  );
+  const isStall = effectiveTtft >= stallAt;
+  const isSlow = !isStall && effectiveTtft >= warnAt;
+  return {
+    hasTtft: true,
+    ttftNum,
+    isSlow,
+    isStall,
+    medianSec,
+    warnAt,
+    stallAt,
+  };
+}
+
+export function formatStepTtftDetail(step, ttftInfo = null) {
+  if (!Number.isFinite(step?.ttftSec) || step.ttftSec < 0) {
+    return step?.isComplete === false ? t('stepCol.ttft.waiting') : t('stepCol.ttft.unavailable');
+  }
+  let text = t('stepCol.ttft.basePart', { sec: Number(step.ttftSec).toFixed(2) });
+  if (Number.isFinite(step?.thinkingDurationSec) && step.thinkingDurationSec > 0) {
+    text += ` · ${t('stepCol.dur.thinkPart', { sec: Number(step.thinkingDurationSec).toFixed(2) })}`;
+  }
+  if (ttftInfo && ttftInfo.medianSec !== null && Number.isFinite(ttftInfo.medianSec)) {
+    text += t('stepCol.ttft.medianPart', { sec: ttftInfo.medianSec.toFixed(1) });
+  }
+  if (ttftInfo?.isStall) {
+    text += t('stepCol.ttft.stallSuffix');
+  } else if (ttftInfo?.isSlow) {
+    text += t('stepCol.ttft.slowSuffix');
+  }
+  if (step?.infraNote) {
+    text += ` · ${step.infraNote}`;
+  }
+  return text;
 }

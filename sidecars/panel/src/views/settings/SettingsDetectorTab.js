@@ -106,6 +106,7 @@ export const SettingsDetectorTab = defineComponent({
     const detectorModelSelect = CustomSelect({
       modelValue: CURRENT_WINDOW_MODEL_VALUE,
       icon: 'fingerprint',
+      className: 'detector-model-select',
       options: [
         {
           value: CURRENT_WINDOW_MODEL_VALUE,
@@ -311,10 +312,7 @@ export const SettingsDetectorTab = defineComponent({
         ]),
         detectorStatusMsg,
       ]),
-      h('div', { className: 'form-row' }, [
-        modelFieldLabelEl,
-        h('div', { className: 'detector-select-box' }, [detectorModelSelect.el]),
-      ]),
+      h('div', { className: 'form-row' }, [modelFieldLabelEl, detectorModelSelect.el]),
       h('div', { className: 'settings-inline-row detector-mode-row' }, [
         modeFieldLabelEl,
         detectorProbeModeSwitch.el,

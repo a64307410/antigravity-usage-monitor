@@ -1084,7 +1084,7 @@ test('preferences schema defaults match pre-refactor UI, migrate legacy none slo
   assert.equal(def.showStepTurnRail, false);
   assert.equal(def.showStepAgentBadge, true);
   assert.equal(def.showStepSpeedColor, false);
-  assert.deepEqual([...def.stepTableColumns], ['step', 'model', 'tps', 'ttft', 'tokens_combo', 'cache', 'cost']);
+  assert.deepEqual([...def.stepTableColumns], ['step', 'model', 'tps', 'ttft', 'duration', 'tokens_combo', 'cache', 'cost']);
   assert.deepEqual({ ...def.modelContextWindows }, {});
 
   // 2. Legacy 3-slot ['context', 'none', 'quota_auto'] migrates cleanly to 2-item ['context', 'quota_auto']

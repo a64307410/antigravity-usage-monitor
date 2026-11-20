@@ -1186,6 +1186,7 @@ export function mountWindowOverlay() {
   let isTopbarUpdating = false;
 
   const updateDot = h('span', { className: 'wm-update-dot', hidden: true });
+  const healthDot = h('span', { className: 'wm-health-dot', hidden: true });
   const topbarUpdateIcon = createSvgIcon('arrow-down', { size: 10 });
   const topbarUpdateLabel = h('span', {
     className: 'wm-update-label',
@@ -1330,6 +1331,7 @@ export function mountWindowOverlay() {
       capsuleSeps[3],
       capsuleSlots[4].el,
       updateDot,
+      healthDot,
     ]
   );
   capsuleShadow.appendChild(multiBtn);
@@ -1369,6 +1371,31 @@ export function mountWindowOverlay() {
     ]
   );
 
+  const hoverHealthBadgeEl = h('span', {
+    className: 'wm-hover-health-badge',
+    text: t('health.badgeFallback'),
+  });
+  const hoverHealthReasonEl = h('span', { className: 'wm-hover-health-text', text: '' });
+  const hoverHealthRightEl = h('span', {
+    className: 'wm-hover-health-right text-mono',
+    text: '',
+  });
+  const hoverHealthBar = h(
+    'div',
+    {
+      className: 'wm-hover-health-bar',
+      hidden: true,
+    },
+    [
+      h('span', { className: 'wm-hover-health-left' }, [
+        createSvgIcon('warning', { size: 11 }),
+        hoverHealthBadgeEl,
+        hoverHealthReasonEl,
+      ]),
+      hoverHealthRightEl,
+    ]
+  );
+
   const hoverWidgetsContainer = h('div', { className: 'wm-hover-widgets' });
   const hoverWidgetHost = createDynamicWidgetHost({
     containerEl: hoverWidgetsContainer,
@@ -1383,7 +1410,7 @@ export function mountWindowOverlay() {
       className: 'wm-hover-tip',
       hidden: true,
     },
-    [hoverUpdateBar, hoverWidgetsContainer]
+    [hoverUpdateBar, hoverHealthBar, hoverWidgetsContainer]
   );
 
   // 左侧多会话实时看板浮层（受控复用 LiveActivityWidget，保持零硬编码与同一套计时器状态机）
@@ -2398,6 +2425,9 @@ export function mountWindowOverlay() {
       patchCapsuleOdometerText(multiLabel, t('capsule.multiZero'), { resetKey: 'multi' });
       patchText(multiRunningMetaEl, t('multi.loading'));
       multiRunningWidget.refs.stopLiveTicker();
+      patchAttr(healthDot, 'hidden', true);
+      patchClasses(capsuleBtn, { 'has-health-warn': false, 'has-health-critical': false });
+      patchAttr(hoverHealthBar, 'hidden', true);
 
       applyCapsuleSlots(slotKeys, { hasTelemetry: false });
       return;
@@ -2448,6 +2478,39 @@ export function mountWindowOverlay() {
     patchClasses(capsuleBtn, { 'is-running': slotCtx.isRunning });
     applyCapsuleSlots(slotKeys, slotCtx);
 
+    const activeHealthObj =
+      (aggregated?.inferenceHealth) ||
+      overviewActive?.inferenceHealth ||
+      telemetry.activeConversation?.inferenceHealth ||
+      null;
+    const rawHealthAlert = activeHealthObj?.activeAlert || null;
+    const showHealthSignal = Boolean(
+      rawHealthAlert &&
+        rawHealthAlert.alertKey &&
+        rawHealthAlert.alertKey !== uiSt.dismissedHealthAlertKey
+    );
+    const isHealthCritical = showHealthSignal && rawHealthAlert.level === 'critical';
+    const isHealthWarn = showHealthSignal && !isHealthCritical;
+    patchAttr(healthDot, 'hidden', !showHealthSignal);
+    patchClasses(healthDot, { 'is-warn': isHealthWarn, 'is-critical': isHealthCritical });
+    patchClasses(capsuleBtn, {
+      'has-health-warn': isHealthWarn,
+      'has-health-critical': isHealthCritical,
+    });
+    patchAttr(hoverHealthBar, 'hidden', !showHealthSignal);
+    if (showHealthSignal) {
+      patchClasses(hoverHealthBar, { 'is-critical': isHealthCritical });
+      patchText(hoverHealthBadgeEl, rawHealthAlert.badge || t('health.badgeFallback'));
+      patchText(
+        hoverHealthReasonEl,
+        rawHealthAlert.reasons?.[0] || rawHealthAlert.title || t('health.hoverFallback')
+      );
+      const hoverStateWord =
+        rawHealthAlert.stateLabel ||
+        (isHealthCritical ? t('health.stateCritical') : t('health.stateWarn'));
+      patchText(hoverHealthRightEl, t('health.hoverClickHint', { state: hoverStateWord }));
+    }
+
     const updateMode = normalizeClientUpdateMode(
       telemetry.settings?.pluginUpdateMode,
       telemetry.settings?.autoUpdatePlugin
@@ -2486,10 +2549,10 @@ export function mountWindowOverlay() {
       updateResponsiveLayout();
     }
 
-    // --- 同步动态悬停组件宿主（0 项且无更新提示时自动关闭悬停窗，点击完整浮窗不受影响） ---
+    // --- 同步动态悬停组件宿主（0 项且无更新/健康提示时自动关闭悬停窗，点击完整浮窗不受影响） ---
     const hoverModuleKeys = normalizeClientHoverModules(telemetry.settings?.hoverModules);
     patchAttr(hoverWidgetsContainer, 'hidden', hoverModuleKeys.length === 0);
-    if (hoverModuleKeys.length === 0 && !showUpdatePrompt && tooltipOpen) {
+    if (hoverModuleKeys.length === 0 && !showUpdatePrompt && !showHealthSignal && tooltipOpen) {
       setTooltipOpen(false);
     }
     if (tooltipOpen) {
@@ -2534,6 +2597,7 @@ export function mountWindowOverlay() {
     (st) => ({
       selectedAgentScope: st.selectedAgentScope,
       ctxInspectorAgentId: st.ctxInspectorAgentId,
+      dismissedHealthAlertKey: st.dismissedHealthAlertKey,
       activeView: st.activeView,
       stepsSubTab: st.stepsSubTab,
       settingsSubTab: st.settingsSubTab,

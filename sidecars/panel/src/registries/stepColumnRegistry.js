@@ -7,9 +7,12 @@
 
 import { h, patchAttr, patchClasses, patchText } from '../core/domPatch.js';
 import {
+  classifyStepTtft,
   formatCachePct,
   formatMetric,
   formatSpeedMetric,
+  formatStepDurationDetail,
+  formatStepTtftDetail,
   formatTokens,
   formatUsd,
   getCacheToneClass,
@@ -244,17 +247,33 @@ export const STEP_COLUMN_REGISTRY = Object.freeze({
     key: 'ttft',
     thLabel: () => t('stepCol.ttft.th'),
     optLabel: () => t('stepCol.ttft.opt'),
-    sigPart: (st) => `${st.ttftSec}:${st.infraNote || ''}`,
+    sigPart: (st, ctx) => {
+      if (ctx?.ttftBaselines) {
+        const info = classifyStepTtft(st, ctx.ttftBaselines);
+        const med = info.medianSec != null ? Math.round(info.medianSec * 10) : -1;
+        return `${st.ttftSec}:${info.isSlow ? 1 : 0}:${info.isStall ? 1 : 0}:${med}:${st.thinkingDurationSec || ''}:${st.infraNote || ''}`;
+      }
+      return `${st.ttftSec}:${st.infraNote || ''}`;
+    },
     createCell: () => {
       const valEl = h('span');
       const td = h('td', {}, [valEl]);
       return { td, refs: { td, valEl } };
     },
-    updateCell: (refs, st) => {
+    updateCell: (refs, st, ctx) => {
       patchText(refs.valEl, formatMetric(st.ttftSec, 's'));
-      const tone = getTtftToneClass(st.ttftSec);
+      let tone = '';
+      let ttftInfo = null;
+      if (ctx?.ttftBaselines) {
+        ttftInfo = classifyStepTtft(st, ctx.ttftBaselines);
+        tone = ttftInfo.isStall ? 'tone-danger' : ttftInfo.isSlow ? 'tone-warn' : '';
+      } else {
+        tone = getTtftToneClass(st.ttftSec);
+      }
       patchAttr(refs.valEl, 'class', tone || null);
-      patchAttr(refs.td, 'title', st.infraNote || null);
+      const hasValidTtft = Number.isFinite(st.ttftSec) && st.ttftSec >= 0;
+      const tipText = hasValidTtft ? formatStepTtftDetail(st, ttftInfo) : st.infraNote || null;
+      patchAttr(refs.td, 'title', tipText);
     },
   },
 
@@ -262,7 +281,8 @@ export const STEP_COLUMN_REGISTRY = Object.freeze({
     key: 'duration',
     thLabel: () => t('stepCol.duration.th'),
     optLabel: () => t('stepCol.duration.opt'),
-    sigPart: (st) => `${st.totalDurationSec ?? st.streamDurationSec ?? ''}`,
+    sigPart: (st) =>
+      `${st.totalDurationSec ?? st.streamDurationSec ?? ''}:${st.ttftSec ?? ''}:${st.thinkingDurationSec ?? ''}`,
     createCell: () => {
       const valEl = h('span');
       const td = h('td', {}, [valEl]);
@@ -271,6 +291,8 @@ export const STEP_COLUMN_REGISTRY = Object.freeze({
     updateCell: (refs, st) => {
       const dur = st.totalDurationSec ?? st.streamDurationSec ?? null;
       patchText(refs.valEl, formatMetric(dur, 's'));
+      const hasDur = dur != null && Number.isFinite(Number(dur)) && Number(dur) > 0;
+      patchAttr(refs.td, 'title', hasDur ? formatStepDurationDetail(st) : null);
     },
   },
 

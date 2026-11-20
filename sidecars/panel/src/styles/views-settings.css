@@ -1001,25 +1001,7 @@
   row-gap: 4px;
 }
 
-.detector-select-box {
-  position: relative;
-  display: flex;
-  align-items: center;
-  padding: 1px 3px;
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-xs);
-  background: var(--surface-panel);
-  transition: border-color var(--dur-instant) var(--ease-fast);
-}
-
-.detector-select-box:hover,
-.detector-select-box:focus-within,
-.detector-select-box:has(.is-open) {
-  z-index: 35;
-  border-color: var(--border-strong);
-}
-
-.detector-select-box .select-menu {
+.detector-model-select .select-menu {
   max-height: 232px;
 }
 

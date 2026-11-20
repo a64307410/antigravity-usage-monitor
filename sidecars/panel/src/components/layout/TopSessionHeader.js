@@ -178,8 +178,13 @@ export const TopSessionHeader = defineComponent({
 
       const actConv = telemetry?.activeConversation;
       const convs = telemetry?.conversations || [];
-      const hostRouteId = telSt.hostRouteConversationId || '';
-      const routeMatch = hostRouteId ? resolveHostRouteMatch(telemetry, hostRouteId) : null;
+      const rawHostRouteId = telSt.hostRouteConversationId || '';
+      const rawRouteMatch = rawHostRouteId ? resolveHostRouteMatch(telemetry, rawHostRouteId) : null;
+      const isHostProbe =
+        Boolean(rawRouteMatch?.rootConv?.title) &&
+        String(rawRouteMatch.rootConv.title).trim().startsWith('[模型检测探针]');
+      const hostRouteId = rawHostRouteId && !isHostProbe ? rawHostRouteId : '';
+      const routeMatch = hostRouteId ? rawRouteMatch : null;
       const hostMatchedConv = routeMatch?.rootConv || null;
       const childRouteBadge =
         routeMatch?.isChildRoute && routeMatch.childAgent

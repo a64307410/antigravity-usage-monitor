@@ -1297,9 +1297,11 @@ test('Compiled app.js mounts dual Shadow DOM hosts, tracks /c/<uuid> routes, pro
     assert.ok(hoverTipEl, 'Hover overview HUD mounted in portal shadow root');
     assert.equal(
       hoverTipEl.children.length,
-      2,
-      'Hover HUD has optional update banner + decoupled .wm-hover-widgets host'
+      3,
+      'Hover HUD has optional update banner + health alert bar + decoupled .wm-hover-widgets host'
     );
+    assert.ok(hoverTipEl.querySelector('.wm-hover-health-bar'), 'Hover HUD mounts health summary bar');
+    assert.ok(capsuleBtn.querySelector('.wm-health-dot'), 'Capsule mounts health indicator dot');
     const hoverWidgetsHost = hoverTipEl.querySelector('.wm-hover-widgets');
     assert.equal(
       hoverWidgetsHost.children.length,
@@ -1957,7 +1959,7 @@ test('Compiled app.js mounts dual Shadow DOM hosts, tracks /c/<uuid> routes, pro
     await new Promise((r) => setTimeout(r, 15));
     sec3.querySelector('.btn-ghost-sm').dispatchEvent({ type: 'click', stopPropagation() {} });
     await new Promise((r) => setTimeout(r, 40));
-    assert.equal(mockSettings.stepTableColumns.length, 7);
+    assert.equal(mockSettings.stepTableColumns.length, 8);
     assert.equal(mockSettings.showStepTurnRail, false, 'Section reset restores showStepTurnRail to false');
     assert.equal(mockSettings.showStepAgentBadge, true, 'Section reset restores showStepAgentBadge to true');
     assert.equal(mockSettings.showStepSpeedColor, false, 'Section reset restores showStepSpeedColor to false');

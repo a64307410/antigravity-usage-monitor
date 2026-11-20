@@ -93,6 +93,7 @@ export const DEFAULT_STEP_TABLE_COLUMNS = Object.freeze([
   'model',
   'tps',
   'ttft',
+  'duration',
   'tokens_combo',
   'cache',
   'cost',

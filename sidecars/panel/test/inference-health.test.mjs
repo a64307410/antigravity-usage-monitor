@@ -934,3 +934,111 @@ test('Audit Regression (#2073..#2326): idle SQLite bounded toolCall decode prese
   assert.match(stIntact.infraNote, /首字响应长卡顿 35\.7s.*思考未受损/);
   assert.equal(summary.activeAlert, null, 'Read-only notice without downstream fault must not raise activeAlert');
 });
+
+test('Audit Regression (#2491 -> #2493) & Pre-Replatform Parity: low-share large code dump does not prematurely clear contagion window, plus adaptive TTFT & 4-part duration detail', async () => {
+  const { extractModelSteps } = await import('../trajectory-metrics.mjs');
+  const { evaluateAgentInferenceHealth } = await import('../backend/inference-health.mjs');
+  const {
+    buildModelTtftBaselines,
+    classifyStepTtft,
+    formatStepDurationDetail,
+    formatStepTtftDetail,
+    buildStepHealthDiagnostic,
+  } = await import('../src/core/formatters.js');
+
+  const steps = extractModelSteps([
+    mkUserStep('移植检测面板与样式', '2026-01-01T10:00:00Z', 0),
+    ...Array.from({ length: 4 }, (_, idx) =>
+      mkPlannerStep({
+        stepIndex: idx + 1,
+        createdAt: `2026-01-01T10:00:${String(idx * 10 + 1).padStart(2, '0')}Z`,
+        finishedGeneratingAt: `2026-01-01T10:00:${String(idx * 10 + 8).padStart(2, '0')}Z`,
+        thinkingTokens: 500,
+        responseTokens: 500,
+        ttft: '5.5s',
+        thinkingDuration: '5.0s',
+      })
+    ),
+    // #2491 archetype: 35.4s TTFT stall + squeezed thinking (67 tok) on read_file
+    mkPlannerStep({
+      stepIndex: 20,
+      createdAt: '2026-01-01T10:02:00Z',
+      finishedGeneratingAt: '2026-01-01T10:02:36Z',
+      thinkingTokens: 67,
+      responseTokens: 64,
+      ttft: '35.4s',
+      thinkingDuration: '0.2s',
+      thinking: '',
+      toolCalls: [{ name: 'read_file', args: { Path: '/repo/domPatch.js' } }],
+    }),
+    mkToolResult('read_file', 'ok'),
+    // #2493 archetype: 21.5s TTFT stall + 348 think tokens vs 10107 response tokens (3.3% share) -> must NOT clear contagion window!
+    mkPlannerStep({
+      stepIndex: 22,
+      createdAt: '2026-01-01T10:02:40Z',
+      finishedGeneratingAt: '2026-01-01T10:04:18Z',
+      thinkingTokens: 348,
+      responseTokens: 10107,
+      ttft: '21.5s',
+      thinkingDuration: '3.0s',
+      thinking: 'Quick port '.padEnd(588, 'x'),
+      toolCalls: [{ name: 'write_file', args: { Path: '/repo/SettingsDetectorTab.js', Content: 'x' } }],
+    }),
+    mkToolResult('write_file', 'ok'),
+    // Downstream fault within 4-step window must still trace back to #20!
+    mkPlannerStep({
+      stepIndex: 24,
+      createdAt: '2026-01-01T10:04:20Z',
+      finishedGeneratingAt: '2026-01-01T10:04:28Z',
+      thinkingTokens: 90,
+      responseTokens: 400,
+      ttft: '6.5s',
+      toolCalls: [{ name: 'edit_file', args: { Path: '/repo/SettingsView.js', Target: 'missing', Replacement: 'y' } }],
+    }),
+    mkToolResult('edit_file', 'Target string not found in file', true),
+  ], []);
+
+  const summary = evaluateAgentInferenceHealth(steps);
+  const st20 = steps.find((s) => s.stepIndex === 20);
+  const st24 = steps.find((s) => s.stepIndex === 24);
+  assert.equal(st20.stepHealthLevel, 'warn', '#2491 source step promotes to warn when downstream fault occurs after low-share #2493');
+  assert.equal(st20.stepHealthBadge, '卡顿缩水');
+  assert.match(st20.stepHealthDetail, /传导至 #24/);
+  assert.match(st24.stepHealthDetail, /受 #20 浅思考传导/);
+  assert.equal(summary.activeAlert?.category, 'degraded_contagion');
+
+  // Verify model-adaptive TTFT classification & 4-part duration hover detail
+  const baselines = buildModelTtftBaselines([
+    { responseModel: 'gemini-3.1-pro-high', ttftSec: 6.2, isComplete: true },
+    { responseModel: 'gemini-3.1-pro-high', ttftSec: 7.0, isComplete: true },
+    { responseModel: 'gemini-3.1-pro-high', ttftSec: 6.8, isComplete: true },
+    { responseModel: 'gemini-2.5-flash', ttftSec: 1.5, isComplete: true },
+    { responseModel: 'gemini-2.5-flash', ttftSec: 1.8, isComplete: true },
+    { responseModel: 'gemini-2.5-flash', ttftSec: 1.6, isComplete: true },
+  ]);
+  const proNormal = classifyStepTtft(
+    { responseModel: 'gemini-3.1-pro-high', ttftSec: 14.2, thinkingDurationSec: 5.0 },
+    baselines
+  );
+  assert.equal(proNormal.isSlow, false, '14.2s on Pro High with 5s buffered thinking is normal');
+  assert.equal(proNormal.isStall, false);
+
+  const flashStall = classifyStepTtft(
+    { responseModel: 'gemini-2.5-flash', ttftSec: 12.0 },
+    baselines
+  );
+  assert.equal(flashStall.isStall, true, '12.0s on Flash is flagged as stall');
+  assert.match(formatStepTtftDetail({ ttftSec: 12.0 }, flashStall), /1\.6s/);
+
+  const durDetail = formatStepDurationDetail({
+    totalDurationSec: 65.3,
+    ttftSec: 34.2,
+    thinkingDurationSec: 1.2,
+    streamDurationSec: 31.0,
+    isComplete: true,
+  });
+  assert.match(durDetail, /65\.30s.*34\.20s.*1\.20s.*31\.00s/);
+
+  const healthDiag = buildStepHealthDiagnostic(st20);
+  assert.ok(healthDiag?.copyAction?.copyText, 'Step health diagnostic provides one-click copyAction');
+});

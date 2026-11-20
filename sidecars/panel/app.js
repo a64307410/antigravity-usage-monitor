@@ -98,6 +98,7 @@ const DEFAULT_STEP_TABLE_COLUMNS = Object.freeze([
   'model',
   'tps',
   'ttft',
+  'duration',
   'tokens_combo',
   'cache',
   'cost',
@@ -1784,8 +1785,32 @@ const I18N_MESSAGES_ZH_CN = Object.freeze({
   'health.dismissTitle': '忽略本轮异常提示',
   'health.copiedToast': '已复制，可粘贴发送',
   'health.jumpLabel': '定位 #{step}',
+  'health.hoverFallback': '检测到推理波动',
+  'health.hoverClickHint': '{state} · 点击处理',
   'steps.healthDiagLabel': '推理诊断',
   'steps.healthTurnSub': '第 {turn} 轮 · {state}',
+  'steps.quickAnomalyBtn': '异常 ({count})',
+  'steps.quickAnomalyTitle': '只看存在推理或网关异常的步骤',
+  'steps.copyPromptBtn': '复制本轮提问',
+  'steps.copyPromptToast': '已复制提问',
+  'steps.copyStopLossBtn': '复制 #{step} 核对止损指令',
+  'steps.copyStopLossText': '先暂停顺着当前惯性继续：#{step} 步出现异常（{reason}）。请先重新核对目标文件的真实状态与前提假设，确认根因后再修改。',
+  'steps.copyStopLossToast': '已复制止损指令',
+  'steps.copyReviewBtn': '复制 #{step} 复核指令',
+  'steps.copyReviewText': '请复核 #{step} 步的前提假设与边界条件（{reason}），确认无遗漏后再继续后续操作。',
+  'steps.copyReviewToast': '已复制复核指令',
+  'stepCol.dur.generating': '该步仍在生成中',
+  'stepCol.dur.unavailable': '无有效单步耗时记录',
+  'stepCol.dur.totalPart': '总耗时 {sec}s',
+  'stepCol.dur.ttftPart': '首字 {sec}s',
+  'stepCol.dur.thinkPart': '思考 {sec}s',
+  'stepCol.dur.streamPart': '输出流 {sec}s',
+  'stepCol.ttft.waiting': '等待首 Token 响应中',
+  'stepCol.ttft.unavailable': '无有效首 Token 耗时记录',
+  'stepCol.ttft.basePart': '首 Token 耗时 {sec}s',
+  'stepCol.ttft.medianPart': ' (同模型中位 {sec}s)',
+  'stepCol.ttft.stallSuffix': ' · 明显卡顿',
+  'stepCol.ttft.slowSuffix': ' · 较慢',
   'settings.subTab.detector': '模型检测',
   'settings.det.title': '模型真身检测',
   'settings.det.modelLabel': '测试模型 (仅限反重力可用模型)',
@@ -2554,8 +2579,32 @@ const I18N_MESSAGES_EN_US = Object.freeze({
   'health.dismissTitle': 'Dismiss alert for this turn',
   'health.copiedToast': 'Copied — paste into chat',
   'health.jumpLabel': 'Jump #{step}',
+  'health.hoverFallback': 'Inference fluctuation detected',
+  'health.hoverClickHint': '{state} · Click to inspect',
   'steps.healthDiagLabel': 'Health Diag',
   'steps.healthTurnSub': 'Turn {turn} · {state}',
+  'steps.quickAnomalyBtn': 'Anomalies ({count})',
+  'steps.quickAnomalyTitle': 'Filter steps with inference or gateway anomalies',
+  'steps.copyPromptBtn': 'Copy Prompt',
+  'steps.copyPromptToast': 'Prompt copied',
+  'steps.copyStopLossBtn': 'Copy #{step} Stop-Loss Prompt',
+  'steps.copyStopLossText': 'Pause current momentum: step #{step} showed an anomaly ({reason}). Re-verify target file context and assumptions before making further edits.',
+  'steps.copyStopLossToast': 'Stop-loss prompt copied',
+  'steps.copyReviewBtn': 'Copy #{step} Review Prompt',
+  'steps.copyReviewText': 'Please double-check assumptions and edge cases around step #{step} ({reason}) before continuing.',
+  'steps.copyReviewToast': 'Review prompt copied',
+  'stepCol.dur.generating': 'Step still generating',
+  'stepCol.dur.unavailable': 'Duration unavailable',
+  'stepCol.dur.totalPart': 'Total {sec}s',
+  'stepCol.dur.ttftPart': 'TTFT {sec}s',
+  'stepCol.dur.thinkPart': 'Think {sec}s',
+  'stepCol.dur.streamPart': 'Stream {sec}s',
+  'stepCol.ttft.waiting': 'Waiting for first token',
+  'stepCol.ttft.unavailable': 'TTFT unavailable',
+  'stepCol.ttft.basePart': 'TTFT {sec}s',
+  'stepCol.ttft.medianPart': ' (model median {sec}s)',
+  'stepCol.ttft.stallSuffix': ' · Stalled',
+  'stepCol.ttft.slowSuffix': ' · Slow',
   'settings.subTab.detector': 'Detector',
   'settings.det.title': 'Model Identity Detector',
   'settings.det.modelLabel': 'Target Model (Host Available Models)',
@@ -3622,7 +3671,7 @@ return { defineComponent };
 })();
 
 // --- src/core/formatters.js ---
-const { formatMetric, formatSpeedMetric, formatCachePct, getSpeedToneClass, getCacheToneClass, getStepCostToneClass, getTtftToneClass, formatTokens, formatTokensPrecise, formatCnyApprox, formatDateSpanBadge, formatUsd, speedReasonText, formatAnomalyKindLabel, formatAnomalyTagText, resolveModelAnomalySummary, formatStepAnomalyInlineSummary, buildStepAnomalyDiagnostic, buildStepHealthDiagnostic, buildStepCompactionDiagnostic, buildModelAnomalyDiagnostic, sampleSummary, formatCountdown, formatCompactDateTime, formatElapsedSec, stripVendorModelPrefix, normalizeOrchestratorIdDisplayMode, resolveModelDisplayInfo, mergeModelsByDisplayName, getAgentBadgeClass, formatAgentBadgeText, formatAgentLabel, formatConversationMeta, formatLiveActivityLabel, formatLiveActivityDetail, getCanonicalModelColorSeed, resolveDeterministicModelColor, buildDeterministicModelColorMap, splitModelHeadTail } = (() => {
+const { formatMetric, formatSpeedMetric, formatCachePct, getSpeedToneClass, getCacheToneClass, getStepCostToneClass, getTtftToneClass, formatTokens, formatTokensPrecise, formatCnyApprox, formatDateSpanBadge, formatUsd, speedReasonText, formatAnomalyKindLabel, formatAnomalyTagText, resolveModelAnomalySummary, formatStepAnomalyInlineSummary, buildStepAnomalyDiagnostic, buildStepHealthDiagnostic, buildStepCompactionDiagnostic, buildModelAnomalyDiagnostic, sampleSummary, formatCountdown, formatCompactDateTime, formatElapsedSec, stripVendorModelPrefix, normalizeOrchestratorIdDisplayMode, resolveModelDisplayInfo, mergeModelsByDisplayName, getAgentBadgeClass, formatAgentBadgeText, formatAgentLabel, formatConversationMeta, formatLiveActivityLabel, formatLiveActivityDetail, getCanonicalModelColorSeed, resolveDeterministicModelColor, buildDeterministicModelColorMap, splitModelHeadTail, formatStepDuration, formatStepDurationDetail, resolveStepTtftModelBucket, resolveModelTtftPriors, buildModelTtftBaselines, classifyStepTtft, formatStepTtftDetail } = (() => {
 /**
  * @fileoverview Pure formatting utilities for speed metrics, token counts,
  * USD estimates, countdown timers, and custom datetime displays.
@@ -3834,6 +3883,7 @@ function buildStepAnomalyDiagnostic(st) {
       danger: st.stepHealthLevel === 'critical',
     });
   }
+  const copyAction = buildStepCopyAction(st);
   return {
     title,
     sub,
@@ -3841,7 +3891,33 @@ function buildStepAnomalyDiagnostic(st) {
     hint: '',
     severity:
       a.severity === 'danger' || st?.stepHealthLevel === 'critical' ? 'danger' : 'warn',
+    ...(copyAction ? { copyAction } : {}),
   };
+}
+
+function buildStepCopyAction(st) {
+  if (!st || typeof st !== 'object') return null;
+  const lvl = st.stepHealthLevel;
+  if (!lvl || lvl === 'healthy') return null;
+  const stepNum = Number(st.stepIndex ?? 0);
+  const reason = st.stepHealthDetail || st.stepHealthBadge || '';
+  if (lvl === 'warn' || lvl === 'critical') {
+    return {
+      kind: 'copy',
+      label: t('steps.copyStopLossBtn', { step: stepNum }),
+      copyText: t('steps.copyStopLossText', { step: stepNum, reason }),
+      toast: t('steps.copyStopLossToast'),
+    };
+  }
+  if (lvl === 'notice' && reason) {
+    return {
+      kind: 'copy',
+      label: t('steps.copyReviewBtn', { step: stepNum }),
+      copyText: t('steps.copyReviewText', { step: stepNum, reason }),
+      toast: t('steps.copyReviewToast'),
+    };
+  }
+  return null;
 }
 
 function buildStepHealthDiagnostic(st) {
@@ -3860,12 +3936,14 @@ function buildStepHealthDiagnostic(st) {
     mono: false,
     danger: lvl === 'critical',
   }));
+  const copyAction = buildStepCopyAction(st);
   return {
     title,
     sub: st.turnIndex ? t('steps.healthTurnSub', { turn: st.turnIndex, state: st.turnHealthStateLabel || '' }) : '',
     rows,
     hint: st.cacheNote || st.infraNote || '',
     severity: lvl === 'critical' ? 'danger' : lvl === 'notice' ? 'notice' : 'warn',
+    ...(copyAction ? { copyAction } : {}),
   };
 }
 
@@ -4748,7 +4826,161 @@ function splitModelHeadTail(rawText) {
   }
   return { head, tail };
 }
-return { formatMetric, formatSpeedMetric, formatCachePct, getSpeedToneClass, getCacheToneClass, getStepCostToneClass, getTtftToneClass, formatTokens, formatTokensPrecise, formatCnyApprox, formatDateSpanBadge, formatUsd, speedReasonText, formatAnomalyKindLabel, formatAnomalyTagText, resolveModelAnomalySummary, formatStepAnomalyInlineSummary, buildStepAnomalyDiagnostic, buildStepHealthDiagnostic, buildStepCompactionDiagnostic, buildModelAnomalyDiagnostic, sampleSummary, formatCountdown, formatCompactDateTime, formatElapsedSec, stripVendorModelPrefix, normalizeOrchestratorIdDisplayMode, resolveModelDisplayInfo, mergeModelsByDisplayName, getAgentBadgeClass, formatAgentBadgeText, formatAgentLabel, formatConversationMeta, formatLiveActivityLabel, formatLiveActivityDetail, getCanonicalModelColorSeed, resolveDeterministicModelColor, buildDeterministicModelColorMap, splitModelHeadTail };
+
+function formatStepDuration(seconds) {
+  if (seconds == null || !Number.isFinite(Number(seconds)) || Number(seconds) <= 0) {
+    return '—';
+  }
+  const s = Number(seconds);
+  if (s < 60) {
+    return `${s.toFixed(1)}s`;
+  }
+  const roundedSec = Math.round(s);
+  const m = Math.floor(roundedSec / 60);
+  const remS = roundedSec % 60;
+  if (m < 60) {
+    return `${m}m${String(remS).padStart(2, '0')}s`;
+  }
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return `${h}h${String(remM).padStart(2, '0')}m`;
+}
+
+function formatStepDurationDetail(step) {
+  const total = step?.totalDurationSec ?? step?.streamDurationSec;
+  if (total == null || !Number.isFinite(Number(total)) || Number(total) <= 0) {
+    return step?.isComplete === false ? t('stepCol.dur.generating') : t('stepCol.dur.unavailable');
+  }
+  const parts = [t('stepCol.dur.totalPart', { sec: Number(total).toFixed(2) })];
+  if (Number.isFinite(step?.ttftSec) && step.ttftSec >= 0) {
+    parts.push(t('stepCol.dur.ttftPart', { sec: Number(step.ttftSec).toFixed(2) }));
+  }
+  if (Number.isFinite(step?.thinkingDurationSec) && step.thinkingDurationSec > 0) {
+    parts.push(t('stepCol.dur.thinkPart', { sec: Number(step.thinkingDurationSec).toFixed(2) }));
+  }
+  const stream = step?.nativeStreamSec ?? step?.streamDurationSec;
+  if (Number.isFinite(stream) && stream > 0) {
+    parts.push(t('stepCol.dur.streamPart', { sec: Number(stream).toFixed(2) }));
+  }
+  return parts.join(' · ');
+}
+
+function resolveStepTtftModelBucket(st) {
+  const raw = String(
+    st?.responseModel || st?.modelUpstream || st?.modelShort || st?.modelKey || 'unknown'
+  )
+    .replace(/·(?:压缩|compact)|\[自动压缩\]/gi, '')
+    .trim()
+    .toLowerCase();
+  return raw || 'unknown';
+}
+
+function resolveModelTtftPriors(st) {
+  const sig = `${st?.modelKey || ''} ${st?.responseModel || ''} ${st?.modelUpstream || ''} ${st?.modelShort || ''} ${st?.modelLabel || ''}`.toLowerCase();
+  if (
+    /\b(?:flash|lite|haiku|hydrogen|mini)\b|worker-agy/.test(sig) &&
+    !/thinking|carbon|opus/.test(sig)
+  ) {
+    return { tier: 'fast', warnFloor: 5.0, stallFloor: 10.0, prefillPer100k: 1.2 };
+  }
+  if (/\b(?:carbon|orchestrator|opus|thinking|xhigh|high|o1|o3|o4|gpt-5)\b/.test(sig)) {
+    return { tier: 'deep', warnFloor: 18.0, stallFloor: 36.0, prefillPer100k: 3.0 };
+  }
+  return { tier: 'standard', warnFloor: 9.0, stallFloor: 18.0, prefillPer100k: 2.0 };
+}
+
+function buildModelTtftBaselines(steps = []) {
+  const byBucket = new Map();
+  for (const s of steps || []) {
+    if (!s || s.isCompactionStep || s.isComplete === false) continue;
+    const v = Number(s.ttftSec);
+    if (!Number.isFinite(v) || v < 0) continue;
+    const bucket = resolveStepTtftModelBucket(s);
+    let arr = byBucket.get(bucket);
+    if (!arr) {
+      arr = [];
+      byBucket.set(bucket, arr);
+    }
+    arr.push(v);
+  }
+  const baselines = new Map();
+  for (const [bucket, vals] of byBucket.entries()) {
+    if (vals.length < 3) continue;
+    const sorted = vals.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const medianSec =
+      sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    baselines.set(bucket, { count: sorted.length, medianSec });
+  }
+  return baselines;
+}
+
+function classifyStepTtft(st, baselinesMap = null) {
+  const ttftNum = Number(st?.ttftSec);
+  if (!Number.isFinite(ttftNum) || ttftNum < 0) {
+    return {
+      hasTtft: false,
+      ttftNum: null,
+      isSlow: false,
+      isStall: false,
+      medianSec: null,
+      warnAt: null,
+      stallAt: null,
+    };
+  }
+  const priors = resolveModelTtftPriors(st);
+  const base = baselinesMap?.get(resolveStepTtftModelBucket(st)) || null;
+  const thinkDur = Number(st?.thinkingDurationSec);
+  const effectiveTtft =
+    Number.isFinite(thinkDur) && thinkDur > 1 && ttftNum >= thinkDur * 0.9
+      ? Math.max(0, ttftNum - thinkDur * 0.85)
+      : ttftNum;
+  const fresh100k = Math.max(0, Number(st?.inputTokens || 0)) / 100000;
+  const prefillAdd = fresh100k * priors.prefillPer100k;
+  const medianSec = base?.medianSec ?? null;
+  const warnAt = Math.max(
+    priors.warnFloor + prefillAdd,
+    medianSec !== null ? medianSec * 2.0 : 0
+  );
+  const stallAt = Math.max(
+    priors.stallFloor + prefillAdd * 1.5,
+    medianSec !== null ? medianSec * 3.2 : 0
+  );
+  const isStall = effectiveTtft >= stallAt;
+  const isSlow = !isStall && effectiveTtft >= warnAt;
+  return {
+    hasTtft: true,
+    ttftNum,
+    isSlow,
+    isStall,
+    medianSec,
+    warnAt,
+    stallAt,
+  };
+}
+
+function formatStepTtftDetail(step, ttftInfo = null) {
+  if (!Number.isFinite(step?.ttftSec) || step.ttftSec < 0) {
+    return step?.isComplete === false ? t('stepCol.ttft.waiting') : t('stepCol.ttft.unavailable');
+  }
+  let text = t('stepCol.ttft.basePart', { sec: Number(step.ttftSec).toFixed(2) });
+  if (Number.isFinite(step?.thinkingDurationSec) && step.thinkingDurationSec > 0) {
+    text += ` · ${t('stepCol.dur.thinkPart', { sec: Number(step.thinkingDurationSec).toFixed(2) })}`;
+  }
+  if (ttftInfo && ttftInfo.medianSec !== null && Number.isFinite(ttftInfo.medianSec)) {
+    text += t('stepCol.ttft.medianPart', { sec: ttftInfo.medianSec.toFixed(1) });
+  }
+  if (ttftInfo?.isStall) {
+    text += t('stepCol.ttft.stallSuffix');
+  } else if (ttftInfo?.isSlow) {
+    text += t('stepCol.ttft.slowSuffix');
+  }
+  if (step?.infraNote) {
+    text += ` · ${step.infraNote}`;
+  }
+  return text;
+}
+return { formatMetric, formatSpeedMetric, formatCachePct, getSpeedToneClass, getCacheToneClass, getStepCostToneClass, getTtftToneClass, formatTokens, formatTokensPrecise, formatCnyApprox, formatDateSpanBadge, formatUsd, speedReasonText, formatAnomalyKindLabel, formatAnomalyTagText, resolveModelAnomalySummary, formatStepAnomalyInlineSummary, buildStepAnomalyDiagnostic, buildStepHealthDiagnostic, buildStepCompactionDiagnostic, buildModelAnomalyDiagnostic, sampleSummary, formatCountdown, formatCompactDateTime, formatElapsedSec, stripVendorModelPrefix, normalizeOrchestratorIdDisplayMode, resolveModelDisplayInfo, mergeModelsByDisplayName, getAgentBadgeClass, formatAgentBadgeText, formatAgentLabel, formatConversationMeta, formatLiveActivityLabel, formatLiveActivityDetail, getCanonicalModelColorSeed, resolveDeterministicModelColor, buildDeterministicModelColorMap, splitModelHeadTail, formatStepDuration, formatStepDurationDetail, resolveStepTtftModelBucket, resolveModelTtftPriors, buildModelTtftBaselines, classifyStepTtft, formatStepTtftDetail };
 })();
 
 // --- src/core/httpClient.js ---
@@ -15492,17 +15724,33 @@ const STEP_COLUMN_REGISTRY = Object.freeze({
     key: 'ttft',
     thLabel: () => t('stepCol.ttft.th'),
     optLabel: () => t('stepCol.ttft.opt'),
-    sigPart: (st) => `${st.ttftSec}:${st.infraNote || ''}`,
+    sigPart: (st, ctx) => {
+      if (ctx?.ttftBaselines) {
+        const info = classifyStepTtft(st, ctx.ttftBaselines);
+        const med = info.medianSec != null ? Math.round(info.medianSec * 10) : -1;
+        return `${st.ttftSec}:${info.isSlow ? 1 : 0}:${info.isStall ? 1 : 0}:${med}:${st.thinkingDurationSec || ''}:${st.infraNote || ''}`;
+      }
+      return `${st.ttftSec}:${st.infraNote || ''}`;
+    },
     createCell: () => {
       const valEl = h('span');
       const td = h('td', {}, [valEl]);
       return { td, refs: { td, valEl } };
     },
-    updateCell: (refs, st) => {
+    updateCell: (refs, st, ctx) => {
       patchText(refs.valEl, formatMetric(st.ttftSec, 's'));
-      const tone = getTtftToneClass(st.ttftSec);
+      let tone = '';
+      let ttftInfo = null;
+      if (ctx?.ttftBaselines) {
+        ttftInfo = classifyStepTtft(st, ctx.ttftBaselines);
+        tone = ttftInfo.isStall ? 'tone-danger' : ttftInfo.isSlow ? 'tone-warn' : '';
+      } else {
+        tone = getTtftToneClass(st.ttftSec);
+      }
       patchAttr(refs.valEl, 'class', tone || null);
-      patchAttr(refs.td, 'title', st.infraNote || null);
+      const hasValidTtft = Number.isFinite(st.ttftSec) && st.ttftSec >= 0;
+      const tipText = hasValidTtft ? formatStepTtftDetail(st, ttftInfo) : st.infraNote || null;
+      patchAttr(refs.td, 'title', tipText);
     },
   },
 
@@ -15510,7 +15758,8 @@ const STEP_COLUMN_REGISTRY = Object.freeze({
     key: 'duration',
     thLabel: () => t('stepCol.duration.th'),
     optLabel: () => t('stepCol.duration.opt'),
-    sigPart: (st) => `${st.totalDurationSec ?? st.streamDurationSec ?? ''}`,
+    sigPart: (st) =>
+      `${st.totalDurationSec ?? st.streamDurationSec ?? ''}:${st.ttftSec ?? ''}:${st.thinkingDurationSec ?? ''}`,
     createCell: () => {
       const valEl = h('span');
       const td = h('td', {}, [valEl]);
@@ -15519,6 +15768,8 @@ const STEP_COLUMN_REGISTRY = Object.freeze({
     updateCell: (refs, st) => {
       const dur = st.totalDurationSec ?? st.streamDurationSec ?? null;
       patchText(refs.valEl, formatMetric(dur, 's'));
+      const hasDur = dur != null && Number.isFinite(Number(dur)) && Number(dur) > 0;
+      patchAttr(refs.td, 'title', hasDur ? formatStepDurationDetail(st) : null);
     },
   },
 
@@ -16675,12 +16926,42 @@ const StepTableWidget = defineComponent({
     ]);
     const stepsTablePane = h('div', { className: 'table-viewport is-step-table' }, [stepsTableEl]);
 
-    const turnTipEl = h('div', {
-      className: 'turn-prompt-tip',
-      role: 'tooltip',
-      hidden: true,
-    });
-    const hideTurnTip = () => patchAttr(turnTipEl, 'hidden', true);
+    const turnCopyTimer = { id: null };
+    const anomalyCopyTimer = { id: null };
+    let activeTurnPromptText = '';
+    let activeAnomalyCopyAction = null;
+    let pinnedTipKind = '';
+    let pinnedAnchorEl = null;
+
+    const turnTipTextEl = h('span', { className: 'turn-tip-text' });
+    const turnTipCopyIcon = createSvgIcon('copy', { size: 11 });
+    const turnTipCopyBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'turn-tip-icon-copy',
+        'aria-label': t('steps.copyPromptBtn'),
+        title: t('steps.copyPromptBtn'),
+        onclick: async (e) => {
+          e?.stopPropagation?.();
+          if (!activeTurnPromptText) return;
+          await copyWithTimedFeedback(activeTurnPromptText, turnCopyTimer, (copied) => {
+            patchSvgIcon(turnTipCopyIcon, copied ? 'check' : 'copy');
+            patchClasses(turnTipCopyBtn, { 'is-copied': copied });
+          });
+        },
+      },
+      [turnTipCopyIcon]
+    );
+    const turnTipEl = h(
+      'div',
+      {
+        className: 'turn-prompt-tip',
+        role: 'tooltip',
+        hidden: true,
+      },
+      [turnTipTextEl, turnTipCopyBtn]
+    );
 
     const anomalyTipTitleEl = h('div', { className: 'step-anomaly-tip-title' });
     const anomalyTipSubEl = h('div', { className: 'step-anomaly-tip-sub text-mono', hidden: true });
@@ -16690,6 +16971,31 @@ const StepTableWidget = defineComponent({
     ]);
     const anomalyTipListEl = h('div', { className: 'step-anomaly-tip-list' });
     const anomalyTipHintEl = h('div', { className: 'step-anomaly-tip-hint', hidden: true });
+    const anomalyTipCopyIcon = createSvgIcon('copy', { size: 11 });
+    const anomalyTipCopyLabel = h('span');
+    const anomalyTipCopyBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'turn-tip-copy-btn',
+        onclick: async (e) => {
+          e?.stopPropagation?.();
+          const act = activeAnomalyCopyAction;
+          if (!act?.copyText) return;
+          await copyWithTimedFeedback(act.copyText, anomalyCopyTimer, (copied) => {
+            patchSvgIcon(anomalyTipCopyIcon, copied ? 'check' : 'copy');
+            patchText(anomalyTipCopyLabel, copied ? act.toast || t('health.copiedToast') : act.label || '');
+            patchClasses(anomalyTipCopyBtn, { 'is-copied': copied });
+          });
+        },
+      },
+      [anomalyTipCopyIcon, anomalyTipCopyLabel]
+    );
+    const anomalyTipActionsEl = h(
+      'div',
+      { className: 'step-anomaly-tip-actions', hidden: true },
+      [anomalyTipCopyBtn]
+    );
     const anomalyTipEl = h(
       'div',
       {
@@ -16697,9 +17003,61 @@ const StepTableWidget = defineComponent({
         role: 'tooltip',
         hidden: true,
       },
-      [anomalyTipHeadEl, anomalyTipListEl, anomalyTipHintEl]
+      [anomalyTipHeadEl, anomalyTipListEl, anomalyTipHintEl, anomalyTipActionsEl]
     );
-    const hideAnomalyTip = () => patchAttr(anomalyTipEl, 'hidden', true);
+
+    const hideTurnTip = (evOrForce) => {
+      if (evOrForce === true) {
+        if (pinnedTipKind === 'turn') {
+          pinnedTipKind = '';
+          pinnedAnchorEl = null;
+        }
+        patchAttr(turnTipEl, 'hidden', true);
+        return;
+      }
+      if (pinnedTipKind === 'turn') return;
+      if (
+        evOrForce &&
+        typeof evOrForce === 'object' &&
+        evOrForce.relatedTarget &&
+        turnTipEl.contains?.(evOrForce.relatedTarget)
+      ) {
+        return;
+      }
+      patchAttr(turnTipEl, 'hidden', true);
+    };
+
+    const hideAnomalyTip = (evOrForce) => {
+      if (evOrForce === true) {
+        if (pinnedTipKind === 'anomaly') {
+          pinnedTipKind = '';
+          pinnedAnchorEl = null;
+        }
+        patchAttr(anomalyTipEl, 'hidden', true);
+        return;
+      }
+      if (pinnedTipKind === 'anomaly') return;
+      if (
+        evOrForce &&
+        typeof evOrForce === 'object' &&
+        evOrForce.relatedTarget &&
+        anomalyTipEl.contains?.(evOrForce.relatedTarget)
+      ) {
+        return;
+      }
+      patchAttr(anomalyTipEl, 'hidden', true);
+    };
+
+    turnTipEl.onmouseleave = (ev) => {
+      if (pinnedTipKind === 'turn') return;
+      if (ev?.relatedTarget && pinnedAnchorEl?.contains?.(ev.relatedTarget)) return;
+      patchAttr(turnTipEl, 'hidden', true);
+    };
+    anomalyTipEl.onmouseleave = (ev) => {
+      if (pinnedTipKind === 'anomaly') return;
+      if (ev?.relatedTarget && pinnedAnchorEl?.contains?.(ev.relatedTarget)) return;
+      patchAttr(anomalyTipEl, 'hidden', true);
+    };
 
     const standaloneHostEl = standalone
       ? h('div', { className: 'step-table-preview-host' }, [
@@ -16749,24 +17107,31 @@ const StepTableWidget = defineComponent({
       tipEl.style.left = `${leftPx}px`;
     }
 
-    function showTurnTip(anchorCell, promptText) {
+    function showTurnTip(anchorCell, promptText, { force = false } = {}) {
+      if (!force && pinnedTipKind && pinnedTipKind !== 'turn') return;
       const text = String(promptText || '').trim();
       if (!anchorCell || !text) {
-        hideTurnTip();
+        hideTurnTip(force ? true : undefined);
         return;
       }
-      hideAnomalyTip();
-      patchText(turnTipEl, text);
+      hideAnomalyTip(true);
+      activeTurnPromptText = text;
+      patchText(turnTipTextEl, text);
+      patchSvgIcon(turnTipCopyIcon, 'copy');
+      patchClasses(turnTipCopyBtn, { 'is-copied': false });
+      patchAttr(turnTipCopyBtn, 'aria-label', t('steps.copyPromptBtn'));
+      patchAttr(turnTipCopyBtn, 'title', t('steps.copyPromptBtn'));
       patchAttr(turnTipEl, 'hidden', false);
       positionFloatingTip(turnTipEl, anchorCell);
     }
 
-    function showAnomalyTip(anchorEl, diag) {
+    function showAnomalyTip(anchorEl, diag, { force = false } = {}) {
+      if (!force && pinnedTipKind && pinnedTipKind !== 'anomaly') return;
       if (!anchorEl || !diag || !diag.title) {
-        hideAnomalyTip();
+        hideAnomalyTip(force ? true : undefined);
         return;
       }
-      hideTurnTip();
+      hideTurnTip(true);
       patchClasses(anomalyTipEl, {
         'is-danger': diag.severity === 'danger',
         'is-notice': diag.severity === 'notice',
@@ -16803,6 +17168,14 @@ const StepTableWidget = defineComponent({
 
       patchAttr(anomalyTipHintEl, 'hidden', !diag.hint);
       if (diag.hint) patchText(anomalyTipHintEl, diag.hint);
+
+      activeAnomalyCopyAction = diag.copyAction || null;
+      patchAttr(anomalyTipActionsEl, 'hidden', !activeAnomalyCopyAction);
+      if (activeAnomalyCopyAction) {
+        patchSvgIcon(anomalyTipCopyIcon, 'copy');
+        patchText(anomalyTipCopyLabel, activeAnomalyCopyAction.label || '');
+        patchClasses(anomalyTipCopyBtn, { 'is-copied': false });
+      }
 
       patchAttr(anomalyTipEl, 'hidden', false);
       positionFloatingTip(anomalyTipEl, anchorEl);
@@ -16982,7 +17355,7 @@ const StepTableWidget = defineComponent({
 
     function leaveStepCell(event) {
       const entry = hoverRows.get(this);
-      hideTurnTip();
+      hideTurnTip(event);
       if (entry?.rowDiagGetter && entry.tr && event?.relatedTarget && entry.tr.contains?.(event.relatedTarget)) {
         showAnomalyTip(this, entry.rowDiagGetter());
       }
@@ -16993,6 +17366,7 @@ const StepTableWidget = defineComponent({
       cell.onmouseenter = null;
       cell.onmousemove = null;
       cell.onmouseleave = null;
+      cell.onclick = null;
     }
 
     function calibrateRowHeights() {
@@ -17553,10 +17927,21 @@ const StepTableWidget = defineComponent({
             tr.onmouseenter = () => {
               showAnomalyTip(anchorEl, rowDiagGetter());
             };
-            tr.onmouseleave = hideAnomalyTip;
+            tr.onmouseleave = (ev) => hideAnomalyTip(ev);
+            tr.onclick = (ev) => {
+              if (ev?.target === refs.agentBadgeEl) return;
+              if (pinnedTipKind === 'anomaly' && pinnedAnchorEl === anchorEl) {
+                hideAnomalyTip(true);
+              } else {
+                pinnedTipKind = 'anomaly';
+                pinnedAnchorEl = anchorEl;
+                showAnomalyTip(anchorEl, rowDiagGetter(), { force: true });
+              }
+            };
           } else {
             tr.onmouseenter = null;
             tr.onmouseleave = null;
+            tr.onclick = null;
           }
 
           patchAttr(refs.railEl, 'hidden', !showRowRail);
@@ -17588,6 +17973,20 @@ const StepTableWidget = defineComponent({
             hoverTd.onmouseenter = useWholeCellTurnTip ? enterStepCell : null;
             hoverTd.onmousemove = useWholeCellTurnTip ? moveInStepCell : moveAlongTurnRail;
             hoverTd.onmouseleave = leaveStepCell;
+            hoverTd.onclick = (ev) => {
+              if (ev?.target === refs.agentBadgeEl) return;
+              const rect = hoverTd.getBoundingClientRect?.();
+              const relX = rect ? (ev?.clientX ?? 0) - rect.left : 0;
+              if (!useWholeCellTurnTip && relX > 18) return;
+              ev?.stopPropagation?.();
+              if (pinnedTipKind === 'turn' && pinnedAnchorEl === hoverTd) {
+                hideTurnTip(true);
+              } else {
+                pinnedTipKind = 'turn';
+                pinnedAnchorEl = hoverTd;
+                showTurnTip(hoverTd, prompt, { force: true });
+              }
+            };
           }
 
           if (enteringRowKeys?.has(item.rowKey)) {
@@ -17646,8 +18045,8 @@ const StepTableWidget = defineComponent({
     }
 
     function onPaneScroll() {
-      hideTurnTip();
-      hideAnomalyTip();
+      hideTurnTip(true);
+      hideAnomalyTip(true);
       if (!activeDataset?.isVirtualized) return;
       if (typeof requestAnimationFrame === 'function') {
         if (scrollRafId) return;
@@ -17660,9 +18059,9 @@ const StepTableWidget = defineComponent({
       }
     }
 
-    function onTbodyLeave() {
-      hideTurnTip();
-      hideAnomalyTip();
+    function onTbodyLeave(ev) {
+      hideTurnTip(ev);
+      hideAnomalyTip(ev);
     }
 
     stepsTablePane.addEventListener('scroll', onPaneScroll, { passive: true });
@@ -17779,6 +18178,7 @@ const StepTableWidget = defineComponent({
       syncTableHeaderColumns(colKeys, { stepTokenComboFormat: normTokenFmt });
 
       const showAgentBadge = Boolean(hasSubagents && showStepAgentBadge);
+      const ttftBaselines = buildModelTtftBaselines(allConversationSteps || tableSteps);
       const cellCtx = {
         hasSubagents,
         showAgentBadge,
@@ -17787,6 +18187,7 @@ const StepTableWidget = defineComponent({
         effectiveScopes,
         scopeSigKey: effectiveScopes.join(','),
         displaySettings,
+        ttftBaselines,
         onSelectAgentScopes,
       };
 
@@ -17932,6 +18333,14 @@ const StepTableWidget = defineComponent({
     }
 
     onCleanup(() => {
+      if (turnCopyTimer.id) {
+        clearTimeout(turnCopyTimer.id);
+        turnCopyTimer.id = null;
+      }
+      if (anomalyCopyTimer.id) {
+        clearTimeout(anomalyCopyTimer.id);
+        anomalyCopyTimer.id = null;
+      }
       clearFlashState();
       stepsTablePane.removeEventListener('scroll', onPaneScroll);
       stepsTbody.removeEventListener('mouseleave', onTbodyLeave);
@@ -21853,6 +22262,7 @@ const SettingsDetectorTab = defineComponent({
     const detectorModelSelect = CustomSelect({
       modelValue: CURRENT_WINDOW_MODEL_VALUE,
       icon: 'fingerprint',
+      className: 'detector-model-select',
       options: [
         {
           value: CURRENT_WINDOW_MODEL_VALUE,
@@ -22058,10 +22468,7 @@ const SettingsDetectorTab = defineComponent({
         ]),
         detectorStatusMsg,
       ]),
-      h('div', { className: 'form-row' }, [
-        modelFieldLabelEl,
-        h('div', { className: 'detector-select-box' }, [detectorModelSelect.el]),
-      ]),
+      h('div', { className: 'form-row' }, [modelFieldLabelEl, detectorModelSelect.el]),
       h('div', { className: 'settings-inline-row detector-mode-row' }, [
         modeFieldLabelEl,
         detectorProbeModeSwitch.el,
@@ -22693,8 +23100,13 @@ const TopSessionHeader = defineComponent({
 
       const actConv = telemetry?.activeConversation;
       const convs = telemetry?.conversations || [];
-      const hostRouteId = telSt.hostRouteConversationId || '';
-      const routeMatch = hostRouteId ? resolveHostRouteMatch(telemetry, hostRouteId) : null;
+      const rawHostRouteId = telSt.hostRouteConversationId || '';
+      const rawRouteMatch = rawHostRouteId ? resolveHostRouteMatch(telemetry, rawHostRouteId) : null;
+      const isHostProbe =
+        Boolean(rawRouteMatch?.rootConv?.title) &&
+        String(rawRouteMatch.rootConv.title).trim().startsWith('[模型检测探针]');
+      const hostRouteId = rawHostRouteId && !isHostProbe ? rawHostRouteId : '';
+      const routeMatch = hostRouteId ? rawRouteMatch : null;
       const hostMatchedConv = routeMatch?.rootConv || null;
       const childRouteBadge =
         routeMatch?.isChildRoute && routeMatch.childAgent
@@ -25127,6 +25539,27 @@ const StepsDetailView = defineComponent({
     });
     modelsScroll.el.setAttribute('hidden', '');
 
+    const quickAnomalyLabelEl = h('span', {
+      text: t('steps.quickAnomalyBtn', { count: 0 }),
+    });
+    const quickAnomalyBtn = h(
+      'button',
+      {
+        type: 'button',
+        className: 'steps-anomaly-filter-btn',
+        hidden: true,
+        title: t('steps.quickAnomalyTitle'),
+        onclick: () => {
+          hideTurnTip(true);
+          hideAnomalyTip(true);
+          onlyAnomalies = !onlyAnomalies;
+          anomalyKindFilter = '';
+          if (latestSlice) renderStepsData(latestSlice);
+        },
+      },
+      [createSvgIcon('warning', { size: 11 }), quickAnomalyLabelEl]
+    );
+
     const headerFiltersEl = h('div', { className: 'steps-header-filters', hidden: true }, [
       inlineScopeSelect.el,
       stepsModelSelect.el,
@@ -25137,11 +25570,17 @@ const StepsDetailView = defineComponent({
       {
         className: 'panel',
         style: 'flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative;',
+        onclick: (ev) => {
+          if (!isEventInside(ev, turnTipEl) && !isEventInside(ev, anomalyTipEl)) {
+            hideTurnTip(true);
+            hideAnomalyTip(true);
+          }
+        },
       },
       [
         h('div', { className: 'panel-header steps-panel-header' }, [
           h('div', { className: 'steps-header-controls' }, [
-            subTabSwitch.el,
+            h('div', { className: 'steps-header-left' }, [subTabSwitch.el, quickAnomalyBtn]),
             headerFiltersEl,
           ]),
         ]),
@@ -25453,6 +25892,24 @@ const StepsDetailView = defineComponent({
       const modelFilteredSteps = tableModelFilterSet
         ? steps.filter((st) => tableModelFilterSet.has(getStepModelGroupKey(st)))
         : steps;
+      const isStepAnomalousItem = (st) => {
+        const a = st?.anomaly;
+        const hasHealthWarn =
+          st?.stepHealthLevel === 'warn' || st?.stepHealthLevel === 'critical';
+        return Boolean((a && Number(a.count) > 0) || hasHealthWarn);
+      };
+      const totalAnomalousSteps = modelFilteredSteps.filter(isStepAnomalousItem).length;
+      if (totalAnomalousSteps === 0 && onlyAnomalies && !anomalyKindFilter) {
+        onlyAnomalies = false;
+      }
+      const showQuickAnomalyBtn = !showModels && (totalAnomalousSteps > 0 || onlyAnomalies);
+      patchAttr(quickAnomalyBtn, 'hidden', !showQuickAnomalyBtn);
+      if (showQuickAnomalyBtn) {
+        patchClasses(quickAnomalyBtn, { 'is-active': onlyAnomalies });
+        patchText(quickAnomalyLabelEl, t('steps.quickAnomalyBtn', { count: totalAnomalousSteps }));
+        patchAttr(quickAnomalyBtn, 'title', t('steps.quickAnomalyTitle'));
+      }
+
       const tableSteps = onlyAnomalies
         ? modelFilteredSteps.filter((st) => {
             const a = st?.anomaly;
@@ -27730,6 +28187,7 @@ function mountWindowOverlay() {
   let isTopbarUpdating = false;
 
   const updateDot = h('span', { className: 'wm-update-dot', hidden: true });
+  const healthDot = h('span', { className: 'wm-health-dot', hidden: true });
   const topbarUpdateIcon = createSvgIcon('arrow-down', { size: 10 });
   const topbarUpdateLabel = h('span', {
     className: 'wm-update-label',
@@ -27874,6 +28332,7 @@ function mountWindowOverlay() {
       capsuleSeps[3],
       capsuleSlots[4].el,
       updateDot,
+      healthDot,
     ]
   );
   capsuleShadow.appendChild(multiBtn);
@@ -27913,6 +28372,31 @@ function mountWindowOverlay() {
     ]
   );
 
+  const hoverHealthBadgeEl = h('span', {
+    className: 'wm-hover-health-badge',
+    text: t('health.badgeFallback'),
+  });
+  const hoverHealthReasonEl = h('span', { className: 'wm-hover-health-text', text: '' });
+  const hoverHealthRightEl = h('span', {
+    className: 'wm-hover-health-right text-mono',
+    text: '',
+  });
+  const hoverHealthBar = h(
+    'div',
+    {
+      className: 'wm-hover-health-bar',
+      hidden: true,
+    },
+    [
+      h('span', { className: 'wm-hover-health-left' }, [
+        createSvgIcon('warning', { size: 11 }),
+        hoverHealthBadgeEl,
+        hoverHealthReasonEl,
+      ]),
+      hoverHealthRightEl,
+    ]
+  );
+
   const hoverWidgetsContainer = h('div', { className: 'wm-hover-widgets' });
   const hoverWidgetHost = createDynamicWidgetHost({
     containerEl: hoverWidgetsContainer,
@@ -27927,7 +28411,7 @@ function mountWindowOverlay() {
       className: 'wm-hover-tip',
       hidden: true,
     },
-    [hoverUpdateBar, hoverWidgetsContainer]
+    [hoverUpdateBar, hoverHealthBar, hoverWidgetsContainer]
   );
 
   // 左侧多会话实时看板浮层（受控复用 LiveActivityWidget，保持零硬编码与同一套计时器状态机）
@@ -28942,6 +29426,9 @@ function mountWindowOverlay() {
       patchCapsuleOdometerText(multiLabel, t('capsule.multiZero'), { resetKey: 'multi' });
       patchText(multiRunningMetaEl, t('multi.loading'));
       multiRunningWidget.refs.stopLiveTicker();
+      patchAttr(healthDot, 'hidden', true);
+      patchClasses(capsuleBtn, { 'has-health-warn': false, 'has-health-critical': false });
+      patchAttr(hoverHealthBar, 'hidden', true);
 
       applyCapsuleSlots(slotKeys, { hasTelemetry: false });
       return;
@@ -28992,6 +29479,39 @@ function mountWindowOverlay() {
     patchClasses(capsuleBtn, { 'is-running': slotCtx.isRunning });
     applyCapsuleSlots(slotKeys, slotCtx);
 
+    const activeHealthObj =
+      (aggregated?.inferenceHealth) ||
+      overviewActive?.inferenceHealth ||
+      telemetry.activeConversation?.inferenceHealth ||
+      null;
+    const rawHealthAlert = activeHealthObj?.activeAlert || null;
+    const showHealthSignal = Boolean(
+      rawHealthAlert &&
+        rawHealthAlert.alertKey &&
+        rawHealthAlert.alertKey !== uiSt.dismissedHealthAlertKey
+    );
+    const isHealthCritical = showHealthSignal && rawHealthAlert.level === 'critical';
+    const isHealthWarn = showHealthSignal && !isHealthCritical;
+    patchAttr(healthDot, 'hidden', !showHealthSignal);
+    patchClasses(healthDot, { 'is-warn': isHealthWarn, 'is-critical': isHealthCritical });
+    patchClasses(capsuleBtn, {
+      'has-health-warn': isHealthWarn,
+      'has-health-critical': isHealthCritical,
+    });
+    patchAttr(hoverHealthBar, 'hidden', !showHealthSignal);
+    if (showHealthSignal) {
+      patchClasses(hoverHealthBar, { 'is-critical': isHealthCritical });
+      patchText(hoverHealthBadgeEl, rawHealthAlert.badge || t('health.badgeFallback'));
+      patchText(
+        hoverHealthReasonEl,
+        rawHealthAlert.reasons?.[0] || rawHealthAlert.title || t('health.hoverFallback')
+      );
+      const hoverStateWord =
+        rawHealthAlert.stateLabel ||
+        (isHealthCritical ? t('health.stateCritical') : t('health.stateWarn'));
+      patchText(hoverHealthRightEl, t('health.hoverClickHint', { state: hoverStateWord }));
+    }
+
     const updateMode = normalizeClientUpdateMode(
       telemetry.settings?.pluginUpdateMode,
       telemetry.settings?.autoUpdatePlugin
@@ -29030,10 +29550,10 @@ function mountWindowOverlay() {
       updateResponsiveLayout();
     }
 
-    // --- 同步动态悬停组件宿主（0 项且无更新提示时自动关闭悬停窗，点击完整浮窗不受影响） ---
+    // --- 同步动态悬停组件宿主（0 项且无更新/健康提示时自动关闭悬停窗，点击完整浮窗不受影响） ---
     const hoverModuleKeys = normalizeClientHoverModules(telemetry.settings?.hoverModules);
     patchAttr(hoverWidgetsContainer, 'hidden', hoverModuleKeys.length === 0);
-    if (hoverModuleKeys.length === 0 && !showUpdatePrompt && tooltipOpen) {
+    if (hoverModuleKeys.length === 0 && !showUpdatePrompt && !showHealthSignal && tooltipOpen) {
       setTooltipOpen(false);
     }
     if (tooltipOpen) {
@@ -29078,6 +29598,7 @@ function mountWindowOverlay() {
     (st) => ({
       selectedAgentScope: st.selectedAgentScope,
       ctxInspectorAgentId: st.ctxInspectorAgentId,
+      dismissedHealthAlertKey: st.dismissedHealthAlertKey,
       activeView: st.activeView,
       stepsSubTab: st.stepsSubTab,
       settingsSubTab: st.settingsSubTab,

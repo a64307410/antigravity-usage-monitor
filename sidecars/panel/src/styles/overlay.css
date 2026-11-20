@@ -399,6 +399,32 @@
   display: none !important;
 }
 
+.wm-health-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--metric-warn);
+  flex-shrink: 0;
+  margin-left: 2px;
+  pointer-events: none;
+}
+
+.wm-health-dot.is-critical {
+  background: var(--metric-danger);
+}
+
+.wm-health-dot[hidden] {
+  display: none !important;
+}
+
+.wm-capsule-btn.has-health-warn {
+  border-color: color-mix(in srgb, var(--metric-warn) 42%, var(--border-hairline));
+}
+
+.wm-capsule-btn.has-health-critical {
+  border-color: color-mix(in srgb, var(--metric-danger) 48%, var(--border-hairline));
+}
+
 /* 顶栏右侧柔和半透明新版本胶囊按钮（20px 矮胶囊嵌套于 28px 顶栏，克制不突兀，左键一键升级） */
 .wm-update-btn {
   display: inline-flex;
@@ -812,5 +838,63 @@
   height: 8px;
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--text-secondary) 38%, transparent);
+  flex-shrink: 0;
+}
+
+/* 顶栏悬停迷你卡顶部推理健康摘要条 */
+.wm-hover-health-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid color-mix(in srgb, var(--metric-warn) 40%, var(--border-hairline));
+  background: color-mix(in srgb, var(--metric-warn-soft) 50%, var(--surface-panel));
+  color: var(--metric-warn);
+  font-size: var(--fs-sm);
+}
+
+.wm-hover-health-bar.is-critical {
+  border-color: color-mix(in srgb, var(--metric-danger) 46%, var(--border-hairline));
+  background: color-mix(in srgb, var(--metric-danger) 9%, var(--surface-panel));
+  color: var(--metric-danger);
+}
+
+.wm-hover-health-bar[hidden] {
+  display: none !important;
+}
+
+.wm-hover-health-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+}
+
+.wm-hover-health-badge {
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.wm-hover-health-text {
+  color: var(--text-primary);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.wm-hover-health-right {
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  white-space: nowrap;
   flex-shrink: 0;
 }
